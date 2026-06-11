@@ -1,0 +1,19 @@
+packages:
+  - packages/*
+  - examples/*
+  - tools/dbpatch
+  - website/
+
+allowBuilds:
+  esbuild: set this to true or false
+  nx: set this to true or false
+  sharp: set this to true or false
+  tree-sitter: set this to true or false
+  tree-sitter-haskell: set this to true or false
+
+onlyBuiltDependencies:
+  - esbuild
+  - nx
+  - sharp
+  - tree-sitter
+  - tree-sitter-haskell

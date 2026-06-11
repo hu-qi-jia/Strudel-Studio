@@ -1,0 +1,201 @@
+import { useState, useCallback } from 'react';
+import cx from '@src/cx.mjs';
+import { setPanelPinned, setActiveFooter as setTab, setIsPanelOpened, useSettings } from '../../../settings.mjs';
+import { FilesTab } from './FilesTab';
+import { SettingsTab } from './SettingsTab';
+import { useLogger } from '../useLogger';
+import { XMarkIcon } from '@heroicons/react/16/solid';
+import { ResizeHandle } from '../ResizeHandle';
+
+const TAURI = typeof window !== 'undefined' && window.__TAURI__;
+
+export function HorizontalPanel({ context }) {
+  const settings = useSettings();
+  const { isPanelOpen, activeFooter: tab } = settings;
+  const [height, setHeight] = useState(360);
+
+  const handleResize = useCallback((newHeight) => {
+    setHeight(newHeight);
+  }, []);
+
+  return (
+    <PanelNav
+      settings={settings}
+      className={cx(isPanelOpen ? 'overflow-hidden flex flex-col' : 'min-h-12 max-h-12 overflow-hidden flex flex-col')}
+      style={isPanelOpen ? { height: `${height}px` } : {}}
+    >
+      <ResizeHandle side="top" onResize={handleResize} minSize={120} maxSize={800} />
+      {isPanelOpen && (
+        <div className="flex h-full overflow-auto pr-10 ">
+          <PanelContent context={context} tab={tab} />
+        </div>
+      )}
+
+      <div className="absolute right-4 pt-4">
+        <PanelActionButton settings={settings} />
+      </div>
+
+      <div className="flex justify-between min-h-12 max-h-12 grid-cols-2 items-center">
+        <Tabs setTab={setTab} tab={tab} />
+      </div>
+    </PanelNav>
+  );
+}
+
+export function VerticalPanel({ context }) {
+  const settings = useSettings();
+  const { activeFooter: tab, isPanelOpen } = settings;
+  const [width, setWidth] = useState(300);
+
+  const handleResize = useCallback((newWidth) => {
+    setWidth(newWidth);
+  }, []);
+
+  return (
+    <PanelNav
+      settings={settings}
+      className={cx(isPanelOpen ? 'overflow-hidden flex flex-row' : 'hidden')}
+      style={isPanelOpen ? { width: `${width}px` } : {}}
+    >
+      <ResizeHandle side="left" onResize={handleResize} minSize={280} maxSize={800} />
+      {isPanelOpen ? (
+        <div className={cx('flex flex-col h-full flex-1 min-w-0')}>
+          <div className="flex justify-between w-full ">
+            <Tabs setTab={setTab} tab={tab} />
+            <PanelActionButton settings={settings} />
+          </div>
+
+          <div className="overflow-auto h-full min-w-0">
+            <PanelContent context={context} tab={tab} />
+          </div>
+        </div>
+      ) : null}
+    </PanelNav>
+  );
+}
+
+const tabNames = {
+  settings: 'settings',
+};
+if (TAURI) {
+  tabNames.files = 'files';
+}
+
+function PanelNav({ children, className, settings, style, ...props }) {
+  const isHoverBehavior = settings.togglePanelTrigger === 'hover';
+  return (
+    <nav
+      onClick={() => {
+        if (!settings.isPanelOpen) {
+          setIsPanelOpened(true);
+        }
+      }}
+      onMouseEnter={() => {
+        if (isHoverBehavior && !settings.isPanelOpen) {
+          setIsPanelOpened(true);
+        }
+      }}
+      onMouseLeave={() => {
+        if (isHoverBehavior && !settings.isPanelPinned) {
+          setIsPanelOpened(false);
+        }
+      }}
+      aria-label="Menu Panel"
+      className={cx('bg-lineHighlight group overflow-x-auto', className)}
+      style={style}
+      {...props}
+    >
+      {children}
+    </nav>
+  );
+}
+
+function PanelContent({ context, tab }) {
+  useLogger();
+  switch (tab) {
+    case tabNames.settings:
+      return <SettingsTab started={context.started} />;
+    case tabNames.files:
+      return <FilesTab />;
+    default:
+      return <SettingsTab started={context.started} />;
+  }
+}
+
+function PanelTab({ label, isSelected, onClick }) {
+  return (
+    <>
+      <button
+        onClick={onClick}
+        className={cx(
+          'h-8 px-2 text-foreground text-[var(--fs-label)] cursor-pointer hover:opacity-50 flex items-center space-x-1 border-b',
+          isSelected ? 'border-foreground' : 'border-transparent',
+        )}
+      >
+        {label}
+      </button>
+    </>
+  );
+}
+function Tabs({ setTab, tab, className }) {
+  return (
+    <div className={cx('flex select-none max-w-full overflow-auto pb-2', className)}>
+      {Object.keys(tabNames).map((key) => {
+        const val = tabNames[key];
+        return <PanelTab key={key} isSelected={tab === val} label={key} onClick={() => setTab(val)} />;
+      })}
+    </div>
+  );
+}
+
+function PanelActionButton({ settings }) {
+  const { togglePanelTrigger, isPanelPinned, isPanelOpen } = settings;
+  const isHoverBehavior = togglePanelTrigger === 'hover';
+  if (!isPanelOpen) {
+    return;
+  }
+
+  if (isHoverBehavior) {
+    return <PinButton pinned={isPanelPinned} />;
+  }
+  return <CloseButton onClick={() => setIsPanelOpened(false)} />;
+}
+
+function PinButton({ pinned }) {
+  return (
+    <button
+      onClick={() => setPanelPinned(!pinned)}
+      className={cx(
+        'text-foreground max-h-8 min-h-8 max-w-8 min-w-8 items-center justify-center p-1.5 group-hover:flex',
+        pinned ? 'flex' : 'hidden',
+      )}
+      aria-label="Pin Menu Panel"
+    >
+      <svg
+        stroke="currentColor"
+        fill={'currentColor'}
+        strokeWidth="0"
+        className="w-full h-full"
+        opacity={pinned ? 1 : '.3'}
+        viewBox="0 0 16 16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707s.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146"></path>
+      </svg>
+    </button>
+  );
+}
+
+function CloseButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        'text-foreground hover:opacity-50 cursor-pointer p-0.5 flex items-center justify-center',
+      )}
+      aria-label="Close Menu"
+    >
+      <XMarkIcon className="w-3.5 h-3.5" />
+    </button>
+  );
+}

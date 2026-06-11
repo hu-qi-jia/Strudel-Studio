@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strudel - Theme Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #222; --fg: #fff; --muted: #ffffff50; --caret: #ffcc00;
+      --border: #ffffff20; --surface: #1a1a1a; --input-bg: #2a2a2a;
+    }
+    body {
+      background: var(--bg); color: var(--fg);
+      font-family: 'Menlo', 'Consolas', monospace;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+    header {
+      padding: 8px 16px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 14px; color: var(--caret); font-weight: normal; }
+    header .btn-group { display: flex; gap: 6px; }
+    header button {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 11px; padding: 3px 12px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--fg); border-radius: 3px; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    header button:hover { background: var(--muted); border-color: var(--fg); }
+    header button.play-btn:hover { border-color: #4caf50; color: #4caf50; }
+    header button.stop-btn:hover { border-color: #e94560; color: #e94560; }
+    header button.settings-btn { font-size: 14px; padding: 2px 10px; }
+    #editor-wrap { flex: 1; overflow: hidden; }
+    .cm-editor { height: 100%; font-size: 14px; }
+    #loading {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; font-size: 18px; color: var(--caret);
+    }
+
+    /* Settings Panel */
+    #settings-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 1000;
+    }
+    #settings-overlay.open { display: block; }
+    #settings-panel {
+      position: fixed; top: 0; right: -360px; bottom: 0;
+      width: 340px; background: var(--surface);
+      border-left: 1px solid var(--border);
+      z-index: 1001; overflow-y: auto;
+      transition: right 0.25s ease; padding: 20px;
+    }
+    #settings-panel.open { right: 0; }
+    #settings-panel h2 {
+      font-size: 14px; color: var(--caret); font-weight: normal;
+      margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;
+    }
+    #settings-panel h2 button {
+      font-size: 16px; padding: 2px 8px;
+      border: 1px solid var(--border); background: transparent; color: var(--fg);
+      border-radius: 3px; cursor: pointer;
+    }
+    #settings-panel h2 button:hover { border-color: var(--fg); }
+    .setting-group {
+      margin-bottom: 14px; padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .setting-group label {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: var(--fg); margin-bottom: 6px; cursor: pointer;
+    }
+    .setting-group label span { flex: 1; }
+    .setting-group input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--caret); cursor: pointer;
+    }
+    .setting-group select, .setting-group input[type="number"], .setting-group input[type="text"] {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 11px; padding: 4px 8px;
+      background: var(--input-bg); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 3px;
+      outline: none; width: 100%;
+    }
+    .setting-group select:focus, .setting-group input:focus { border-color: var(--caret); }
+    .setting-group select option { background: var(--input-bg); color: var(--fg); }
+    .setting-group .hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Strudel</h1>
+    <div class="btn-group">
+      <button class="play-btn" id="play-btn">&#9654; Play</button>
+      <button class="stop-btn" id="stop-btn">&#9632; Stop</button>
+    </div>
+    <button class="settings-btn" id="settings-btn" title="Settings">&#9881;</button>
+  </header>
+  <div id="editor-wrap">
+    <div id="loading">Loading Strudel...</div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-overlay"></div>
+  <div id="settings-panel">
+    <h2>Settings <button id="settings-close">&times;</button></h2>
+
+    <div class="setting-group">
+      <label><span>Theme</span></label>
+      <select id="set-theme"></select>
+    </div>
+    <div class="setting-group">
+      <label><span>Keybindings</span></label>
+      <select id="set-keybindings">
+        <option value="codemirror">CodeMirror (Default)</option>
+        <option value="vim">Vim</option>
+        <option value="emacs">Emacs</option>
+        <option value="vscode">VSCode</option>
+        <option value="helix">Helix</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label><span>Font Family</span></label>
+      <input type="text" id="set-fontFamily" value="monospace" />
+    </div>
+    <div class="setting-group">
+      <label><span>Font Size</span></label>
+      <input type="number" id="set-fontSize" value="18" min="10" max="36" />
+    </div>
+
+    <div class="setting-group">
+      <label><span>Line Numbers</span><input type="checkbox" id="set-isLineNumbersDisplayed" checked /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Active Line Highlight</span><input type="checkbox" id="set-isActiveLineHighlighted" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Bracket Matching</span><input type="checkbox" id="set-isBracketMatchingEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Auto Close Brackets</span><input type="checkbox" id="set-isBracketClosingEnabled" checked /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Auto Completion</span><input type="checkbox" id="set-isAutoCompletionEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Pattern Highlighting</span><input type="checkbox" id="set-isPatternHighlightingEnabled" checked /></label>
+      <div class="hint">Highlight active notes during playback</div>
+    </div>
+    <div class="setting-group">
+      <label><span>Flash on Evaluate</span><input type="checkbox" id="set-isFlashEnabled" checked /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Tooltip</span><input type="checkbox" id="set-isTooltipEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Line Wrapping</span><input type="checkbox" id="set-isLineWrappingEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Tab Indentation</span><input type="checkbox" id="set-isTabIndentationEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Multi Cursor</span><input type="checkbox" id="set-isMultiCursorEnabled" /></label>
+    </div>
+    <div class="setting-group">
+      <label><span>Block-based Evaluation</span><input type="checkbox" id="set-isBlockBasedEvalEnabled" /></label>
+      <div class="hint">Evaluate only the block under cursor</div>
+    </div>
+  </div>
+
+  <script type="module">
+    const strudel = await import('https://unpkg.com/@strudel/web@latest/dist/index.mjs');
+    await strudel.initStrudel();
+    document.getElementById('loading')?.remove();
+
+    const cmState = await import('https://esm.sh/@codemirror/state@6');
+    const cmView = await import('https://esm.sh/@codemirror/view@6');
+    const cmLang = await import('https://esm.sh/@codemirror/lang-javascript@6');
+    const cmLangBase = await import('https://esm.sh/@codemirror/language@6');
+    const cmHighlight = await import('https://esm.sh/@lezer/highlight@1');
+    const cmCommands = await import('https://esm.sh/@codemirror/commands@6');
+    const cmAutocomplete = await import('https://esm.sh/@codemirror/autocomplete@6');
+    const cmSearch = await import('https://esm.sh/@codemirror/search@6');
+
+    const { EditorState, Compartment } = cmState;
+    const { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection, rectangularSelection, crosshairCursor, EditorView: EV } = cmView;
+    const { javascript } = cmLang;
+    const { syntaxHighlighting, HighlightStyle, bracketMatching, foldGutter, indentOnInput } = cmLangBase;
+    const t = cmHighlight.tags;
+    const { defaultKeymap, indentWithTab } = cmCommands;
+    const { closeBrackets, closeBracketsKeymap, autocompletion } = cmAutocomplete;
+    const { highlightSelectionMatches } = cmSearch;
+
+    // === Theme definitions ===
+    const themeData = {
+      blackscreen: { label: 'Blackscreen', settings: { background: 'black', foreground: 'white', muted: '#ffffff50', caret: 'white', selection: '#ffffff20', selectionMatch: '#036dd626', lineHighlight: '#ffffff10', gutterBackground: 'transparent', gutterForeground: '#8a919966' }, styles: [{ tag: t.labelName, color: 'inherit' },{ tag: t.keyword, color: 'inherit' },{ tag: t.operator, color: 'inherit' },{ tag: t.special(t.variableName), color: 'inherit' },{ tag: t.typeName, color: 'inherit' },{ tag: t.atom, color: 'inherit' },{ tag: t.number, color: 'inherit' },{ tag: t.definition(t.variableName), color: 'inherit' },{ tag: t.string, color: 'inherit' },{ tag: t.special(t.string), color: 'inherit' },{ tag: t.comment, color: 'inherit' },{ tag: t.variableName, color: 'inherit' },{ tag: t.tagName, color: 'inherit' },{ tag: t.bracket, color: 'inherit' },{ tag: t.meta, color: 'inherit' },{ tag: t.attributeName, color: 'inherit' },{ tag: t.propertyName, color: 'inherit' },{ tag: t.className, color: 'inherit' },{ tag: t.invalid, color: 'inherit' },{ tag: [t.unit, t.punctuation], color: 'inherit' }] },
+      bluescreen: { label: 'Bluescreen', settings: { background: '#0000aa', foreground: '#ffffff', muted: '#ffffff50', caret: '#ffffff', selection: '#ffffff20', selectionMatch: '#036dd626', lineHighlight: '#ffffff10', gutterBackground: 'transparent', gutterForeground: '#ffffff66' }, styles: [{ tag: t.labelName, color: 'inherit' },{ tag: t.keyword, color: '#ffff00' },{ tag: t.operator, color: 'inherit' },{ tag: t.number, color: 'inherit' },{ tag: t.string, color: '#aaffaa' },{ tag: t.comment, color: '#aaaaaa' },{ tag: t.variableName, color: 'inherit' },{ tag: t.tagName, color: 'inherit' },{ tag: t.bracket, color: 'inherit' },{ tag: t.propertyName, color: 'inherit' },{ tag: [t.unit, t.punctuation], color: 'inherit' }] },
+      whitescreen: { label: 'Whitescreen', settings: { background: '#ffffff', foreground: '#000000', muted: '#00000050', caret: '#000000', selection: '#00000020', selectionMatch: '#036dd626', lineHighlight: '#00000008', gutterBackground: 'transparent', gutterForeground: '#00000066' }, styles: [{ tag: t.labelName, color: 'inherit' },{ tag: t.keyword, color: 'inherit' },{ tag: t.operator, color: 'inherit' },{ tag: t.number, color: 'inherit' },{ tag: t.string, color: 'inherit' },{ tag: t.comment, color: 'inherit' },{ tag: t.variableName, color: 'inherit' },{ tag: t.tagName, color: 'inherit' },{ tag: t.bracket, color: 'inherit' },{ tag: t.propertyName, color: 'inherit' },{ tag: [t.unit, t.punctuation], color: 'inherit' }] },
+      strudelTheme: { label: 'Strudel', settings: { background: '#222', foreground: '#fff', muted: '#8a919966', caret: '#ffcc00', selection: 'rgba(128, 203, 196, 0.5)', selectionMatch: '#036dd626', lineHighlight: '#00000050', gutterBackground: 'transparent', gutterForeground: '#8a919966' }, styles: [{ tag: [t.atom, t.bool, t.special(t.variableName)], color: '#89ddff' },{ tag: t.labelName, color: '#89ddff' },{ tag: t.keyword, color: '#c792ea' },{ tag: t.operator, color: '#89ddff' },{ tag: t.typeName, color: '#c3e88d' },{ tag: t.atom, color: '#f78c6c' },{ tag: t.number, color: '#c3e88d' },{ tag: t.definition(t.variableName), color: '#82aaff' },{ tag: t.string, color: '#c3e88d' },{ tag: t.special(t.string), color: '#c3e88d' },{ tag: t.comment, color: '#7d8799' },{ tag: t.variableName, color: '#c792ea' },{ tag: t.tagName, color: '#c3e88d' },{ tag: t.bracket, color: '#525154' },{ tag: t.meta, color: '#ffcb6b' },{ tag: t.attributeName, color: '#c792ea' },{ tag: t.propertyName, color: '#c792ea' },{ tag: t.className, color: '#decb6b' },{ tag: t.invalid, color: '#ffffff' },{ tag: [t.unit, t.punctuation], color: '#82aaff' }] },
+      dracula: { label: 'Dracula', settings: { background: '#282a36', foreground: '#f8f8f2', muted: '#f8f8f250', caret: '#f8f8f0', selection: 'rgba(255, 255, 255, 0.1)', selectionMatch: 'rgba(255, 255, 255, 0.2)', lineHighlight: 'rgba(255, 255, 255, 0.1)', gutterBackground: '#282a36', gutterForeground: '#6272a4' }, styles: [{ tag: t.comment, color: '#6272a4' },{ tag: t.string, color: '#f1fa8c' },{ tag: [t.atom, t.number], color: '#BD93F9' },{ tag: [t.meta, t.labelName, t.variableName], color: '#f8f8f2' },{ tag: [t.keyword, t.tagName, t.arithmeticOperator], color: '#ff79c6' },{ tag: [t.function(t.variableName), t.propertyName], color: '#50fa7b' }] },
+      monokai: { label: 'Monokai', settings: { background: '#272822', foreground: '#FFFFFF', muted: '#FFFFFF50', caret: '#FFFFFF', selection: '#49483E', selectionMatch: '#49483E', lineHighlight: '#00000059', gutterBackground: '#272822', gutterForeground: '#FFFFFF70' }, styles: [{ tag: t.labelName, color: '#bababa' },{ tag: [t.comment, t.documentMeta], color: '#8292a2' },{ tag: [t.number, t.bool, t.null, t.atom], color: '#ae81ff' },{ tag: [t.attributeValue, t.className, t.name], color: '#e6db74' },{ tag: [t.propertyName, t.attributeName], color: '#a6e22e' },{ tag: t.variableName, color: '#9effff' },{ tag: [t.string, t.special(t.brace)], color: '#e6db74' },{ tag: [t.definition(t.variableName), t.definition(t.propertyName), t.function(t.variableName)], color: '#a6e22e' },{ tag: [t.keyword, t.definitionKeyword, t.modifier, t.tagName, t.angleBracket], color: '#f92672' }] },
+      nord: { label: 'Nord', settings: { background: '#2e3440', foreground: '#d8dee9', muted: '#d8dee950', caret: '#d8dee9', selection: '#434c5ecc', selectionMatch: '#434c5ecc', lineHighlight: '#3b4252', gutterBackground: '#2e3440', gutterForeground: '#4c566a' }, styles: [{ tag: t.comment, color: '#616e88' },{ tag: t.string, color: '#a3be8c' },{ tag: [t.atom, t.number], color: '#b48ead' },{ tag: [t.keyword, t.modifier, t.definitionKeyword], color: '#81a1c1' },{ tag: t.variableName, color: '#d8dee9' },{ tag: [t.function(t.variableName), t.propertyName], color: '#88c0d0' },{ tag: t.tagName, color: '#81a1c1' },{ tag: t.typeName, color: '#8fbcbb' },{ tag: t.operator, color: '#81a1c1' }] },
+      solarizedDark: { label: 'Solarized Dark', settings: { background: '#002b36', foreground: '#839496', muted: '#83949650', caret: '#839496', selection: '#073642', selectionMatch: '#073642', lineHighlight: '#073642', gutterBackground: '#002b36', gutterForeground: '#586e75' }, styles: [{ tag: t.comment, color: '#586e75' },{ tag: t.string, color: '#2aa198' },{ tag: [t.atom, t.number], color: '#d33682' },{ tag: [t.keyword, t.tagName], color: '#859900' },{ tag: t.variableName, color: '#268bd2' },{ tag: [t.function(t.variableName), t.propertyName], color: '#268bd2' },{ tag: t.typeName, color: '#b58900' }] },
+      solarizedLight: { label: 'Solarized Light', settings: { background: '#fdf6e3', foreground: '#657b83', muted: '#657b8350', caret: '#657b83', selection: '#eee8d5', selectionMatch: '#eee8d5', lineHighlight: '#eee8d5', gutterBackground: '#fdf6e3', gutterForeground: '#93a1a1' }, styles: [{ tag: t.comment, color: '#93a1a1' },{ tag: t.string, color: '#2aa198' },{ tag: [t.atom, t.number], color: '#d33682' },{ tag: [t.keyword, t.tagName], color: '#859900' },{ tag: t.variableName, color: '#268bd2' },{ tag: [t.function(t.variableName), t.propertyName], color: '#268bd2' },{ tag: t.typeName, color: '#b58900' }] },
+      githubDark: { label: 'GitHub Dark', settings: { background: '#0d1117', foreground: '#c9d1d9', muted: '#c9d1d950', caret: '#58a6ff', selection: '#264f78', selectionMatch: '#264f78', lineHighlight: '#161b22', gutterBackground: '#0d1117', gutterForeground: '#484f58' }, styles: [{ tag: t.comment, color: '#8b949e' },{ tag: t.string, color: '#a5d6ff' },{ tag: [t.atom, t.number], color: '#79c0ff' },{ tag: [t.keyword, t.modifier], color: '#ff7b72' },{ tag: t.variableName, color: '#ffa657' },{ tag: [t.function(t.variableName), t.propertyName], color: '#d2a8ff' },{ tag: t.tagName, color: '#7ee787' },{ tag: t.typeName, color: '#ffa657' }] },
+      githubLight: { label: 'GitHub Light', settings: { background: '#ffffff', foreground: '#24292f', muted: '#24292f50', caret: '#0969da', selection: '#b6e3ff', selectionMatch: '#b6e3ff', lineHighlight: '#f6f8fa', gutterBackground: '#ffffff', gutterForeground: '#8c959f' }, styles: [{ tag: t.comment, color: '#6e7781' },{ tag: t.string, color: '#0a3069' },{ tag: [t.atom, t.number], color: '#0550ae' },{ tag: [t.keyword, t.modifier], color: '#cf222e' },{ tag: t.variableName, color: '#953800' },{ tag: [t.function(t.variableName), t.propertyName], color: '#8250df' },{ tag: t.tagName, color: '#116329' }] },
+      vscodeDark: { label: 'VSCode Dark', settings: { background: '#1e1e1e', foreground: '#d4d4d4', muted: '#d4d4d450', caret: '#d4d4d4', selection: '#264f78', selectionMatch: '#264f78', lineHighlight: '#2a2d2e', gutterBackground: '#1e1e1e', gutterForeground: '#858585' }, styles: [{ tag: t.comment, color: '#6a9955' },{ tag: t.string, color: '#ce9178' },{ tag: [t.atom, t.number], color: '#b5cea8' },{ tag: [t.keyword, t.modifier], color: '#569cd6' },{ tag: t.variableName, color: '#9cdcfe' },{ tag: [t.function(t.variableName), t.propertyName], color: '#dcdcaa' },{ tag: t.tagName, color: '#569cd6' },{ tag: t.typeName, color: '#4ec9b0' }] },
+      tokyoNight: { label: 'Tokyo Night', settings: { background: '#1a1b26', foreground: '#a9b1d6', muted: '#a9b1d650', caret: '#c0caf5', selection: '#283457', selectionMatch: '#283457', lineHighlight: '#1f2335', gutterBackground: '#1a1b26', gutterForeground: '#3b4261' }, styles: [{ tag: t.comment, color: '#565f89' },{ tag: t.string, color: '#9ece6a' },{ tag: [t.atom, t.number], color: '#ff9e64' },{ tag: [t.keyword, t.modifier], color: '#bb9af7' },{ tag: t.variableName, color: '#c0caf5' },{ tag: [t.function(t.variableName), t.propertyName], color: '#7aa2f7' },{ tag: t.tagName, color: '#2ac3de' }] },
+      gruvboxDark: { label: 'Gruvbox Dark', settings: { background: '#282828', foreground: '#ebdbb2', muted: '#ebdbb250', caret: '#ebdbb2', selection: '#504945', selectionMatch: '#504945', lineHighlight: '#3c3836', gutterBackground: '#282828', gutterForeground: '#665c54' }, styles: [{ tag: t.comment, color: '#928374' },{ tag: t.string, color: '#b8bb26' },{ tag: [t.atom, t.number], color: '#d3869b' },{ tag: [t.keyword, t.modifier], color: '#fb4934' },{ tag: t.variableName, color: '#ebdbb2' },{ tag: [t.function(t.variableName), t.propertyName], color: '#fabd2f' },{ tag: t.tagName, color: '#fe8019' }] },
+      materialDark: { label: 'Material Dark', settings: { background: '#212121', foreground: '#eeffff', muted: '#eeffff50', caret: '#ffcc00', selection: '#314568', selectionMatch: '#314568', lineHighlight: '#2a2a2a', gutterBackground: '#212121', gutterForeground: '#4a4a4a' }, styles: [{ tag: t.comment, color: '#546e7a' },{ tag: t.string, color: '#c3e88d' },{ tag: [t.atom, t.number], color: '#f78c6c' },{ tag: [t.keyword, t.modifier], color: '#c792ea' },{ tag: t.variableName, color: '#eeffff' },{ tag: [t.function(t.variableName), t.propertyName], color: '#82aaff' },{ tag: t.tagName, color: '#f07178' }] },
+      redText: { label: 'Red Text', settings: { background: 'black', foreground: '#ff0000', muted: '#ff000050', caret: '#ff0000', selection: '#ff000020', selectionMatch: '#036dd626', lineHighlight: '#ff000008', gutterBackground: 'transparent', gutterForeground: '#ff000066' }, styles: [{ tag: t.keyword, color: 'inherit' },{ tag: t.number, color: 'inherit' },{ tag: t.string, color: 'inherit' },{ tag: t.comment, color: '#ff000080' },{ tag: t.variableName, color: 'inherit' },{ tag: t.propertyName, color: 'inherit' },{ tag: [t.unit, t.punctuation], color: 'inherit' }] },
+      greenText: { label: 'Green Text', settings: { background: 'black', foreground: '#00ff00', muted: '#00ff0050', caret: '#00ff00', selection: '#00ff0020', selectionMatch: '#036dd626', lineHighlight: '#00ff0008', gutterBackground: 'transparent', gutterForeground: '#00ff0066' }, styles: [{ tag: t.keyword, color: 'inherit' },{ tag: t.number, color: 'inherit' },{ tag: t.string, color: 'inherit' },{ tag: t.comment, color: '#00ff0080' },{ tag: t.variableName, color: 'inherit' },{ tag: t.propertyName, color: 'inherit' },{ tag: [t.unit, t.punctuation], color: 'inherit' }] },
+    };
+
+    // Populate theme selector in settings
+    const themeSelect = document.getElementById('set-theme');
+    Object.entries(themeData).forEach(([key, val]) => {
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = val.label;
+      themeSelect.appendChild(opt);
+    });
+    themeSelect.value = 'strudelTheme';
+
+    // === Settings state ===
+    const settings = {
+      theme: 'strudelTheme',
+      keybindings: 'codemirror',
+      fontFamily: 'monospace',
+      fontSize: 18,
+      isLineNumbersDisplayed: true,
+      isActiveLineHighlighted: false,
+      isBracketMatchingEnabled: false,
+      isBracketClosingEnabled: true,
+      isAutoCompletionEnabled: false,
+      isPatternHighlightingEnabled: true,
+      isFlashEnabled: true,
+      isTooltipEnabled: false,
+      isLineWrappingEnabled: false,
+      isTabIndentationEnabled: false,
+      isMultiCursorEnabled: false,
+      isBlockBasedEvalEnabled: false,
+    };
+
+    // Load from localStorage
+    try {
+      const saved = JSON.parse(localStorage.getItem('strudel-demo-settings'));
+      if (saved) Object.assign(settings, saved);
+    } catch(e) {}
+    const saveSettings = () => localStorage.setItem('strudel-demo-settings', JSON.stringify(settings));
+
+    // Apply saved values to UI
+    themeSelect.value = settings.theme;
+    document.getElementById('set-keybindings').value = settings.keybindings;
+    document.getElementById('set-fontFamily').value = settings.fontFamily;
+    document.getElementById('set-fontSize').value = settings.fontSize;
+    ['isLineNumbersDisplayed','isActiveLineHighlighted','isBracketMatchingEnabled','isBracketClosingEnabled','isAutoCompletionEnabled','isPatternHighlightingEnabled','isFlashEnabled','isTooltipEnabled','isLineWrappingEnabled','isTabIndentationEnabled','isMultiCursorEnabled','isBlockBasedEvalEnabled'].forEach(key => {
+      document.getElementById('set-' + key).checked = settings[key];
+    });
+
+    // === Theme builder ===
+    function buildTheme(name) {
+      const data = themeData[name];
+      const s = data.settings;
+      const isDark = !s.background.startsWith('#f') && s.background !== '#ffffff' && s.background !== '#fdf6e3';
+      const themeExt = EditorView.theme({
+        '&': { color: s.foreground, backgroundColor: s.background },
+        '.cm-gutters': { backgroundColor: s.gutterBackground, color: s.gutterForeground },
+        '.cm-content': { caretColor: s.caret },
+        '.cm-cursor, .cm-dropCursor': { borderLeftColor: s.caret },
+        '.cm-activeLineGutter': { backgroundColor: s.lineHighlight },
+        '.cm-activeLine': { backgroundColor: s.lineHighlight },
+        '&.cm-focused .cm-selectionBackground, & .cm-line::selection, & .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': { background: s.selection + ' !important' },
+        '& .cm-selectionMatch': { backgroundColor: s.selectionMatch },
+      }, { dark: isDark });
+      const highlightExt = HighlightStyle.define(data.styles);
+      return [themeExt, syntaxHighlighting(highlightExt)];
+    }
+
+    // === Compartments for dynamic reconfiguration ===
+    const compartments = {
+      theme: new Compartment(),
+      lineNumbers: new Compartment(),
+      activeLineGutter: new Compartment(),
+      activeLine: new Compartment(),
+      bracketMatching: new Compartment(),
+      closeBrackets: new Compartment(),
+      autocompletion: new Compartment(),
+      highlightSelectionMatches: new Compartment(),
+      lineWrapping: new Compartment(),
+      multiCursor: new Compartment(),
+      tabIndent: new Compartment(),
+    };
+
+    const sampleCode = `// Strudel Live Coding
+// Click Play or Ctrl+Enter to play
+// Click Stop or Ctrl+. to stop
+
+$: note('c3 eb3 g3 bb3')
+  .s('sawtooth')
+  .slow(2)
+  .gain(0.4)
+
+$: note('[c4 eb4 g4]*4')
+  .s('square')
+  .gain(0.3)
+  .room(0.5)
+
+$: s('bd*2 [~ bd] sd')
+  .gain(0.6)
+  .speed(1.1)
+
+$: s('hh*8')
+  .gain(0.2)
+  .fast(2)`;
+
+    const strudelKeymap = keymap.of([
+      { key: 'Ctrl-Enter', run: () => { strudel.evaluate(view.state.doc.toString(), true); return true; } },
+      { key: 'Ctrl-.', run: () => { strudel.hush(); return true; } },
+    ]);
+
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: sampleCode,
+        extensions: [
+          compartments.theme.of(buildTheme(settings.theme)),
+          compartments.lineNumbers.of(settings.isLineNumbersDisplayed ? lineNumbers() : []),
+          compartments.activeLineGutter.of(settings.isLineNumbersDisplayed ? highlightActiveLineGutter() : []),
+          compartments.activeLine.of(settings.isActiveLineHighlighted ? highlightActiveLine() : []),
+          foldGutter(),
+          drawSelection(),
+          rectangularSelection(),
+          crosshairCursor(),
+          compartments.bracketMatching.of(settings.isBracketMatchingEnabled ? bracketMatching() : []),
+          compartments.closeBrackets.of(settings.isBracketClosingEnabled ? closeBrackets() : []),
+          compartments.autocompletion.of(settings.isAutoCompletionEnabled ? autocompletion() : []),
+          compartments.highlightSelectionMatches.of(highlightSelectionMatches()),
+          compartments.lineWrapping.of(settings.isLineWrappingEnabled ? EditorView.lineWrapping : []),
+          compartments.multiCursor.of(settings.isMultiCursorEnabled ? EditorState.allowMultipleSelections.of(true) : []),
+          compartments.tabIndent.of(settings.isTabIndentationEnabled ? keymap.of([indentWithTab]) : []),
+          indentOnInput(),
+          javascript(),
+          keymap.of([...defaultKeymap, ...closeBracketsKeymap]),
+          strudelKeymap,
+        ],
+      }),
+      parent: document.getElementById('editor-wrap'),
+    });
+
+    // Apply initial font settings
+    document.getElementById('editor-wrap').style.fontSize = settings.fontSize + 'px';
+    document.getElementById('editor-wrap').style.fontFamily = settings.fontFamily;
+
+    // === Update page appearance for theme ===
+    function applyThemeToPage(name) {
+      const s = themeData[name].settings;
+      const isDark = !s.background.startsWith('#f') && s.background !== '#ffffff' && s.background !== '#fdf6e3';
+      // Derive surface and input colors from background
+      const bg = s.background;
+      let surface, inputBg;
+      if (bg === 'black') { surface = '#0a0a0a'; inputBg = '#1a1a1a'; }
+      else if (bg === '#ffffff') { surface = '#f5f5f5'; inputBg = '#e8e8e8'; }
+      else if (bg === '#fdf6e3') { surface = '#eee8d5'; inputBg = '#e0dac7'; }
+      else { surface = isDark ? lighten(bg, 8) : darken(bg, 8); inputBg = isDark ? lighten(bg, 15) : darken(bg, 15); }
+      const root = document.documentElement;
+      root.style.setProperty('--bg', bg);
+      root.style.setProperty('--fg', s.foreground);
+      root.style.setProperty('--muted', s.muted);
+      root.style.setProperty('--caret', s.caret);
+      root.style.setProperty('--border', s.muted);
+      root.style.setProperty('--surface', surface);
+      root.style.setProperty('--input-bg', inputBg);
+    }
+    function lighten(hex, pct) {
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      const f = pct / 100;
+      return '#' + [r,g,b].map(c => Math.min(255, Math.round(c + (255 - c) * f)).toString(16).padStart(2,'0')).join('');
+    }
+    function darken(hex, pct) {
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      const f = 1 - pct / 100;
+      return '#' + [r,g,b].map(c => Math.max(0, Math.round(c * f)).toString(16).padStart(2,'0')).join('');
+    }
+    applyThemeToPage(settings.theme);
+
+    // === Settings panel toggle ===
+    const panel = document.getElementById('settings-panel');
+    const overlay = document.getElementById('settings-overlay');
+    const openSettings = () => { panel.classList.add('open'); overlay.classList.add('open'); };
+    const closeSettings = () => { panel.classList.remove('open'); overlay.classList.remove('open'); };
+    document.getElementById('settings-btn').addEventListener('click', openSettings);
+    document.getElementById('settings-close').addEventListener('click', closeSettings);
+    overlay.addEventListener('click', closeSettings);
+
+    // === Settings change handlers ===
+    function reconfigure(key, value) {
+      view.dispatch({ effects: compartments[key].reconfigure(value) });
+    }
+
+    // Theme
+    themeSelect.addEventListener('change', () => {
+      settings.theme = themeSelect.value;
+      reconfigure('theme', buildTheme(settings.theme));
+      applyThemeToPage(settings.theme);
+      saveSettings();
+    });
+
+    // Keybindings (visual only - full vim/emacs/helix needs their packages)
+    document.getElementById('set-keybindings').addEventListener('change', (e) => {
+      settings.keybindings = e.target.value;
+      saveSettings();
+    });
+
+    // Font
+    document.getElementById('set-fontFamily').addEventListener('change', (e) => {
+      settings.fontFamily = e.target.value;
+      document.getElementById('editor-wrap').style.fontFamily = settings.fontFamily;
+      const scroller = document.querySelector('.cm-scroller');
+      if (scroller) scroller.style.fontFamily = settings.fontFamily;
+      saveSettings();
+    });
+    document.getElementById('set-fontSize').addEventListener('change', (e) => {
+      settings.fontSize = parseInt(e.target.value) || 18;
+      document.getElementById('editor-wrap').style.fontSize = settings.fontSize + 'px';
+      saveSettings();
+    });
+
+    // Boolean toggles
+    const boolMap = {
+      isLineNumbersDisplayed: (v) => v ? [lineNumbers(), highlightActiveLineGutter()] : [],
+      isActiveLineHighlighted: (v) => v ? highlightActiveLine() : [],
+      isBracketMatchingEnabled: (v) => v ? bracketMatching() : [],
+      isBracketClosingEnabled: (v) => v ? closeBrackets() : [],
+      isAutoCompletionEnabled: (v) => v ? autocompletion() : [],
+      isLineWrappingEnabled: (v) => v ? EditorView.lineWrapping : [],
+      isMultiCursorEnabled: (v) => v ? EditorState.allowMultipleSelections.of(true) : [],
+      isTabIndentationEnabled: (v) => v ? keymap.of([indentWithTab]) : [],
+    };
+
+    Object.entries(boolMap).forEach(([key, builder]) => {
+      document.getElementById('set-' + key).addEventListener('change', (e) => {
+        settings[key] = e.target.checked;
+        const compKey = key.replace(/^is/, '').charAt(0).toLowerCase() + key.replace(/^is/, '').slice(1);
+        // Map setting key to compartment key
+        const compMap = {
+          lineNumbersDisplayed: 'lineNumbers',
+          activeLineHighlighted: 'activeLine',
+          bracketMatchingEnabled: 'bracketMatching',
+          bracketClosingEnabled: 'closeBrackets',
+          autoCompletionEnabled: 'autocompletion',
+          lineWrappingEnabled: 'lineWrapping',
+          multiCursorEnabled: 'multiCursor',
+          tabIndentationEnabled: 'tabIndent',
+        };
+        const cKey = compMap[compKey] || compKey;
+        if (compartments[cKey]) {
+          reconfigure(cKey, builder(settings[key]));
+        }
+        // lineNumbers also controls activeLineGutter
+        if (key === 'isLineNumbersDisplayed') {
+          reconfigure('activeLineGutter', settings[key] ? highlightActiveLineGutter() : []);
+        }
+        saveSettings();
+      });
+    });
+
+    // Non-reconfigurable toggles (just save state)
+    ['isPatternHighlightingEnabled','isFlashEnabled','isTooltipEnabled','isBlockBasedEvalEnabled'].forEach(key => {
+      document.getElementById('set-' + key).addEventListener('change', (e) => {
+        settings[key] = e.target.checked;
+        saveSettings();
+      });
+    });
+
+    // === Play / Stop ===
+    document.getElementById('play-btn').addEventListener('click', () => {
+      strudel.evaluate(view.state.doc.toString(), true);
+    });
+    document.getElementById('stop-btn').addEventListener('click', () => {
+      strudel.hush();
+    });
+  </script>
+</body>
+</html>
