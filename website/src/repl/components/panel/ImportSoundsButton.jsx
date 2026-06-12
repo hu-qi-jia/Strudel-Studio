@@ -22,8 +22,13 @@ export default function ImportSoundsButton({ onComplete }) {
   return (
     <div>
       <label
-        style={{ alignItems: 'center', borderColor: 'red', border: 1 }}
-        className="flex bg-background  p-4  w-fit rounded-xl hover:opacity-50 whitespace-nowrap cursor-pointer"
+        className="flex items-center gap-2 px-3 py-1.5 w-fit hover:opacity-50 whitespace-nowrap cursor-pointer border"
+        style={{
+          fontSize: 'var(--fs-input)',
+          backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
+          borderColor: 'color-mix(in srgb, var(--foreground) 20%, transparent)',
+          borderRadius: '0',
+        }}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -31,7 +36,7 @@ export default function ImportSoundsButton({ onComplete }) {
           viewBox="0 0 24 24"
           strokeWidth={1.5}
           stroke="currentColor"
-          className="size-6 mr-2"
+          className="w-4 h-4"
         >
           <path
             strokeLinecap="round"

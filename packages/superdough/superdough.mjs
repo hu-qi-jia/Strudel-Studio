@@ -208,6 +208,10 @@ export const getAudioContext = () => {
   return audioContext;
 };
 
+export const setAudioContext = (ctx) => {
+  audioContext = ctx;
+};
+
 export function getAudioContextCurrentTime() {
   return getAudioContext().currentTime;
 }

@@ -2,7 +2,7 @@ import cx from '@src/cx.mjs';
 
 export function ActionButton({ children, label, labelIsHidden, className, ...buttonProps }) {
   return (
-    <button className={cx('hover:opacity-50 text-nowrap w-fit', className)} title={label} {...buttonProps}>
+    <button className={cx('hover:opacity-50 text-nowrap w-fit', className)} style={{ fontSize: 'var(--fs-input)' }} title={label} {...buttonProps}>
       {labelIsHidden !== true && label}
       {children}
     </button>

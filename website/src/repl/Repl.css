@@ -305,17 +305,17 @@
 }
 
 /* ============================================
-   Reference 内容区字号覆盖
-   原站使用 text-sm (14px) + prose 默认 em 单位
-   此处用更紧凑的字号，通过高优先级选择器覆盖 prose 默认值
+   Reference 内容区样式
+   区分标题、正文、代码块格式
    ============================================ */
 #reference-container .ref-content {
-  font-size: var(--fs-body); /* 12px 基础 */
+  font-size: 14px;
   line-height: 1.5;
 }
 
 #reference-container .ref-content h2 {
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.4;
   margin-top: 1em;
   margin-bottom: 0.5em;
@@ -323,40 +323,58 @@
 }
 
 #reference-container .ref-content h3 {
-  font-size: 13px;
+  font-size: 14px;
   font-family: var(--font-family, 'SF Mono', 'Monaco', monospace);
+  font-weight: 600;
   line-height: 1.4;
-  margin-top: 0.8em;
+  margin-top: 1em;
   margin-bottom: 0.3em;
+  padding: 2px 4px;
   color: var(--foreground);
+  border-left: 2px solid var(--foreground);
+  padding-left: 6px;
 }
 
 #reference-container .ref-content p {
-  font-size: var(--fs-label); /* 11px */
+  font-size: 15px;
   line-height: 1.5;
-  margin-top: 0.4em;
-  margin-bottom: 0.4em;
-  color: var(--foreground);
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+  color: color-mix(in srgb, var(--foreground) 80%, transparent);
 }
 
 #reference-container .ref-content code {
-  font-size: var(--fs-input); /* 10px */
+  font-size: 13px;
+  font-family: var(--font-family, 'SF Mono', 'Monaco', monospace);
   color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  padding: 1px 4px;
+  border-radius: 2px;
 }
 
 #reference-container .ref-content li {
-  font-size: var(--fs-label); /* 11px */
-  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--foreground) 80%, transparent);
 }
 
 #reference-container .ref-content pre {
-  font-size: var(--fs-input); /* 10px */
+  font-size: 13px;
+  font-family: var(--font-family, 'SF Mono', 'Monaco', monospace);
   color: var(--foreground);
-  background: var(--background);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  padding: 6px 8px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  margin: 0.4em 0;
+  overflow-x: auto;
+  line-height: 1.4;
 }
 
 #reference-container .ref-content a {
   color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 #reference-container .ref-content strong {
@@ -366,4 +384,15 @@
 #reference-container .ref-content ul {
   margin-top: 0.3em;
   margin-bottom: 0.3em;
+  padding-left: 1.2em;
+}
+
+#reference-container .ref-content section {
+  margin-bottom: 0.8em;
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+#reference-container .ref-content section:last-child {
+  border-bottom: none;
 }

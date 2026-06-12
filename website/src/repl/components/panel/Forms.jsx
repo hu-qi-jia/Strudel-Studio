@@ -9,7 +9,7 @@ export function ButtonGroup({ value, onChange, items }) {
           id={key}
           onClick={() => onChange(key)}
           className={cx(
-            'px-2 py-0.5 border-b whitespace-nowrap text-[var(--fs-input)] transition-colors',
+            'px-2 py-0.5 border-b whitespace-nowrap transition-colors',
             value === key ? 'border-foreground' : 'border-transparent text-foreground/50 hover:text-foreground/70',
           )}
           style={{ height: '28px', fontSize: 'var(--fs-input)' }}
@@ -23,7 +23,7 @@ export function ButtonGroup({ value, onChange, items }) {
 
 export function Checkbox({ label, value, onChange, disabled = false }) {
   return (
-    <label className="flex items-center gap-1 cursor-pointer text-[var(--fs-input)] hover:opacity-80">
+    <label className="flex items-center gap-1 cursor-pointer hover:opacity-80" style={{ fontSize: 'var(--fs-input)' }}>
       <input
         disabled={disabled}
         type="checkbox"

@@ -63,12 +63,12 @@
 
 :root {
   /* --- 字号变量 --- */
-  --fs-hint: 10px;       /* 提示/辅助文字 */
-  --fs-input: 11px;      /* 表单输入框、按钮 */
-  --fs-label: 12px;      /* 表单标签 */
-  --fs-body: 13px;       /* 正文、标题、编辑器 */
-  --fs-icon-btn: 13px;   /* 图标按钮 */
-  --fs-loading: 17px;    /* 加载状态 */
+  --fs-hint: 12px;       /* 提示/辅助文字 */
+  --fs-input: 13px;      /* 表单输入框、按钮 */
+  --fs-label: 16px;      /* 表单标签 */
+  --fs-body: 16px;       /* 正文、标题、编辑器 */
+  --fs-icon-btn: 16px;   /* 图标按钮 */
+  --fs-loading: 20px;    /* 加载状态 */
 
   /* --- 间距变量 --- */
   --space-xs: 4px;

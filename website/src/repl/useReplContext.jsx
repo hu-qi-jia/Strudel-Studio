@@ -14,6 +14,8 @@ import {
   resetLoadedSounds,
   initAudioOnFirstClick,
   resetDefaults,
+  renderPatternAudio,
+  initAudio,
 } from '@strudel/webaudio';
 import { setVersionDefaultsFrom } from './util.mjs';
 import { StrudelMirror, defaultSettings } from '@strudel/codemirror';
@@ -215,6 +217,31 @@ export function useReplContext() {
   };
 
   const handleShare = async () => shareCode(replState.code);
+
+  const handleExport = async (begin, end, sampleRate, maxPolyphony, multiChannelOrbits, downloadName = undefined) => {
+    await editorRef.current.evaluate(false);
+    editorRef.current.repl.scheduler.stop();
+    await renderPatternAudio(
+      editorRef.current.repl.state.pattern,
+      editorRef.current.repl.scheduler.cps,
+      begin,
+      end,
+      sampleRate,
+      maxPolyphony,
+      multiChannelOrbits,
+      downloadName,
+    ).finally(async () => {
+      const { latestCode, maxPolyphony, audioDeviceName, multiChannelOrbits } = settingsMap.get();
+      await initAudio({
+        latestCode,
+        maxPolyphony,
+        audioDeviceName,
+        multiChannelOrbits,
+      });
+      editorRef.current.repl.scheduler.stop();
+    });
+  };
+
   const context = {
     started,
     pending,
@@ -225,6 +252,7 @@ export function useReplContext() {
     handleShuffle,
     handleShare,
     handleEvaluate,
+    handleExport,
     init,
     error,
     editorRef,

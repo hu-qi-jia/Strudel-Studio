@@ -6,6 +6,7 @@ import { useSettings, setIsZen, setIsPanelOpened, setIsConsoleOpen, setIsSoundsO
 import { Modal } from './Modal.jsx';
 import { PatternsTab } from './panel/PatternsTab.jsx';
 import { Reference } from './panel/Reference.jsx';
+import ExportTab from './panel/ExportTab.jsx';
 import '../Repl.css';
 
 const { BASE_URL } = import.meta.env;
@@ -17,6 +18,7 @@ export function Header({ context, embedded = false }) {
   const { isZen, isButtonRowHidden, isCSSAnimationDisabled, fontFamily, isPanelOpen, isConsoleOpen, isSoundsOpen } = useSettings();
   const [showPatterns, setShowPatterns] = useState(false);
   const [showReference, setShowReference] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   return (
     <>
@@ -94,6 +96,12 @@ export function Header({ context, embedded = false }) {
                 )}
               >
                 console
+              </button>
+              <button
+                onClick={() => setShowExport(true)}
+                className="px-2 py-1 hover:opacity-50 text-[var(--fs-label)] rounded transition-colors cursor-pointer"
+              >
+                export
               </button>
             </div>
 
@@ -191,6 +199,15 @@ export function Header({ context, embedded = false }) {
         title="reference"
       >
         <Reference />
+      </Modal>
+
+      {/* Export 弹窗 */}
+      <Modal
+        isOpen={showExport}
+        onClose={() => setShowExport(false)}
+        title="export"
+      >
+        <ExportTab handleExport={context.handleExport} />
       </Modal>
     </>
   );

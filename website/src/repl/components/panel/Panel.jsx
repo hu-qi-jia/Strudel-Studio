@@ -74,9 +74,7 @@ export function VerticalPanel({ context }) {
   );
 }
 
-const tabNames = {
-  settings: 'settings',
-};
+const tabNames = {};
 if (TAURI) {
   tabNames.files = 'files';
 }
@@ -113,8 +111,6 @@ function PanelNav({ children, className, settings, style, ...props }) {
 function PanelContent({ context, tab }) {
   useLogger();
   switch (tab) {
-    case tabNames.settings:
-      return <SettingsTab started={context.started} />;
     case tabNames.files:
       return <FilesTab />;
     default:
