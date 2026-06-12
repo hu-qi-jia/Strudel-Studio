@@ -218,9 +218,11 @@ export function getAudioContextCurrentTime() {
 
 let workletsLoading;
 function loadWorklets() {
-  if (!workletsLoading) {
-    const audioCtx = getAudioContext();
+  const audioCtx = getAudioContext();
+  // 如果缓存的 worklet 属于旧的 context，需要重新加载
+  if (!workletsLoading || workletsLoading._ctx !== audioCtx) {
     workletsLoading = audioCtx.audioWorklet.addModule(workletsUrl);
+    workletsLoading._ctx = audioCtx;
   }
 
   return workletsLoading;
@@ -243,7 +245,7 @@ export async function initAudio(options = {}) {
 
   const audioCtx = getAudioContext();
 
-  if (audioDeviceName != null && audioDeviceName != DEFAULT_AUDIO_DEVICE_NAME) {
+  if (audioDeviceName != null && audioDeviceName != DEFAULT_AUDIO_DEVICE_NAME && !(audioCtx instanceof OfflineAudioContext)) {
     try {
       const devices = await getAudioDevices();
       const id = devices.get(audioDeviceName);
@@ -259,7 +261,10 @@ export async function initAudio(options = {}) {
     }
   }
 
-  await audioCtx.resume();
+  // OfflineAudioContext 不支持 resume，跳过
+  if (!(audioCtx instanceof OfflineAudioContext)) {
+    await audioCtx.resume();
+  }
   if (disableWorklets) {
     logger('[superdough]: AudioWorklets disabled with disableWorklets');
     return;
@@ -516,6 +521,9 @@ export function resetGlobalEffects() {
   orbits = {};
   analysers = {};
   analysersData = {};
+  channelMerger = null;
+  destinationGain = null;
+  activeSoundSources = new Map();
 }
 
 let activeSoundSources = new Map();

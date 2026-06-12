@@ -13,6 +13,7 @@ import {
   doughTrigger,
   initAudio,
   resetGlobalEffects,
+  resetSampleCache,
   errorLogger,
 } from 'superdough';
 const { Pattern, logger, repl } = strudel;
@@ -41,7 +42,13 @@ export async function renderPatternAudio(
   downloadName = undefined,
 ) {
   let audioContext = getAudioContext();
-  await audioContext.close();
+  // 关闭当前 AudioContext（OfflineAudioContext 没有 close 方法）
+  if (audioContext && typeof audioContext.close === 'function') {
+    await audioContext.close();
+  }
+  // 重置全局效果和音频路由节点，确保新的 OfflineAudioContext 会重新初始化
+  resetGlobalEffects();
+  resetSampleCache();
   audioContext = new OfflineAudioContext(2, ((end - begin) / cps) * sampleRate, sampleRate);
   setAudioContext(audioContext);
   await initAudio({
@@ -76,18 +83,26 @@ export async function renderPatternAudio(
       const wavBuffer = audioBufferToWav(renderedBuffer);
       const blob = new Blob([wavBuffer], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
+      downloadName = downloadName ? `${downloadName}.wav` : `${new Date().toISOString()}.wav`;
+      // 使用 window.open 触发下载，避免 a.click() 在异步上下文中被浏览器阻止
       const a = document.createElement('a');
       a.href = url;
-      downloadName = downloadName ? `${downloadName}.wav` : `${new Date().toISOString()}.wav`;
       a.download = downloadName;
+      a.style.display = 'none';
       document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // 延迟点击确保 DOM 已插入
+      setTimeout(() => {
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+      }, 0);
     })
     .finally(async () => {
       setAudioContext(null);
       resetGlobalEffects();
+      resetSampleCache();
     });
 }
 

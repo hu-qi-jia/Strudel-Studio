@@ -8,6 +8,12 @@ const loadCache = {}; // string: Promise<ArrayBuffer>
 
 export const getCachedBuffer = (url) => bufferCache[url];
 
+// 清除采样缓存（导出后 AudioContext 变化时需要重新解码）
+export const resetSampleCache = () => {
+  Object.keys(bufferCache).forEach((k) => delete bufferCache[k]);
+  Object.keys(loadCache).forEach((k) => delete loadCache[k]);
+};
+
 function humanFileSize(bytes, si) {
   var thresh = si ? 1000 : 1024;
   if (bytes < thresh) return bytes + ' B';
@@ -113,6 +119,11 @@ export const loadBuffer = (url, ac, s, n = 0) => {
         const decoded = await ac.decodeAudioData(res);
         bufferCache[url] = decoded;
         return decoded;
+      })
+      .catch((err) => {
+        // 加载失败时清除缓存，允许后续重试
+        delete loadCache[url];
+        throw err;
       });
   }
   return loadCache[url];

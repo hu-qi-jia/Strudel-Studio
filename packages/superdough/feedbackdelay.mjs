@@ -25,7 +25,9 @@ if (typeof DelayNode !== 'undefined') {
     }
   }
 
-  AudioContext.prototype.createFeedbackDelay = function (wet, time, feedback) {
+  // 挂载到 BaseAudioContext.prototype，使 OfflineAudioContext 也可用
+  const _proto = typeof BaseAudioContext !== 'undefined' ? BaseAudioContext.prototype : AudioContext.prototype;
+  _proto.createFeedbackDelay = function (wet, time, feedback) {
     return new FeedbackDelayNode(this, wet, time, feedback);
   };
 }

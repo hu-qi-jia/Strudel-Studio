@@ -63,7 +63,9 @@ if (typeof GainNode !== 'undefined') {
     }
   }
 
-  AudioContext.prototype.createVowelFilter = function (letter) {
+  // 挂载到 BaseAudioContext.prototype，使 OfflineAudioContext 也可用
+  const _proto = typeof BaseAudioContext !== 'undefined' ? BaseAudioContext.prototype : AudioContext.prototype;
+  _proto.createVowelFilter = function (letter) {
     return new VowelNode(this, letter);
   };
 }

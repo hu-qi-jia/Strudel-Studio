@@ -219,27 +219,39 @@ export function useReplContext() {
   const handleShare = async () => shareCode(replState.code);
 
   const handleExport = async (begin, end, sampleRate, maxPolyphony, multiChannelOrbits, downloadName = undefined) => {
-    await editorRef.current.evaluate(false);
-    editorRef.current.repl.scheduler.stop();
-    await renderPatternAudio(
-      editorRef.current.repl.state.pattern,
-      editorRef.current.repl.scheduler.cps,
-      begin,
-      end,
-      sampleRate,
-      maxPolyphony,
-      multiChannelOrbits,
-      downloadName,
-    ).finally(async () => {
-      const { latestCode, maxPolyphony, audioDeviceName, multiChannelOrbits } = settingsMap.get();
-      await initAudio({
-        latestCode,
-        maxPolyphony,
-        audioDeviceName,
-        multiChannelOrbits,
-      });
+    try {
+      await editorRef.current.evaluate(false);
       editorRef.current.repl.scheduler.stop();
-    });
+      const pattern = editorRef.current.repl.state.pattern;
+      if (!pattern) {
+        throw new Error('No pattern to export. Please play some code first.');
+      }
+      await renderPatternAudio(
+        pattern,
+        editorRef.current.repl.scheduler.cps,
+        begin,
+        end,
+        sampleRate,
+        maxPolyphony,
+        multiChannelOrbits,
+        downloadName,
+      );
+    } finally {
+      // 确保恢复正常的 AudioContext
+      const { latestCode, maxPolyphony, audioDeviceName, multiChannelOrbits } = settingsMap.get();
+      try {
+        await initAudio({
+          latestCode,
+          maxPolyphony,
+          audioDeviceName,
+          multiChannelOrbits,
+        });
+      } catch (e) {
+        // 恢复音频上下文失败时静默处理
+        console.warn('[export] failed to restore audio context:', e);
+      }
+      editorRef.current.repl.scheduler.stop();
+    }
   };
 
   const context = {
