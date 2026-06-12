@@ -4,17 +4,20 @@ import { useSettings } from '../../../settings.mjs';
 import { AudioSection } from './settings/AudioSection.jsx';
 import { AppearanceSection } from './settings/AppearanceSection.jsx';
 import { EditorSection } from './settings/EditorSection.jsx';
+import { ModelSection } from './settings/ModelSection.jsx';
 
 const TABS = [
   { key: 'audio', label: 'audio' },
   { key: 'appearance', label: 'appearance' },
   { key: 'editor', label: 'editor' },
+  { key: 'model', label: 'model' },
 ];
 
 const SECTIONS = {
   audio: AudioSection,
   appearance: AppearanceSection,
   editor: EditorSection,
+  model: ModelSection,
 };
 
 export function SettingsTab({ started }) {
@@ -23,7 +26,7 @@ export function SettingsTab({ started }) {
   const ActiveSection = SECTIONS[activeTab];
 
   return (
-    <div className="text-foreground w-full min-w-0 font-[inherit]" style={{ fontFamily }}>
+    <div className="text-foreground w-full min-w-0 font-[inherit] flex flex-col h-full" style={{ fontFamily }}>
       {/* 子标签栏 */}
       <div
         className="flex border-b px-2"
@@ -43,7 +46,7 @@ export function SettingsTab({ started }) {
         ))}
       </div>
       {/* 内容区 */}
-      <div className="px-3 py-2 space-y-0 overflow-y-auto min-w-0">
+      <div className="px-3 py-2 space-y-0 overflow-y-auto min-w-0 flex-1 min-h-0">
         <ActiveSection started={started} />
       </div>
     </div>

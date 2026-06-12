@@ -13,13 +13,14 @@ function getUpdatedLog(log, event) {
   const { message, type, data } = event.detail;
   const lastLog = log.length ? log[log.length - 1] : undefined;
   const id = nanoid(12);
+  const timestamp = Date.now();
   if (type === 'loaded-sample') {
     const loadIndex = log.findIndex(({ data: { url }, type }) => type === 'load-sample' && url === data.url);
-    log[loadIndex] = { message, type, id, data };
+    log[loadIndex] = { message, type, id, data, timestamp };
   } else if (lastLog && lastLog.message === message) {
-    log = log.slice(0, -1).concat([{ message, type, count: (lastLog.count ?? 1) + 1, id, data }]);
+    log = log.slice(0, -1).concat([{ message, type, count: (lastLog.count ?? 1) + 1, id, data, timestamp }]);
   } else {
-    log = log.concat([{ message, type, id, data }]);
+    log = log.concat([{ message, type, id, data, timestamp }]);
   }
   return log.slice(-20);
 }

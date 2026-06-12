@@ -64,6 +64,9 @@ export function ConsoleSidebar({ position }) {
             {log.map((l) => {
               const message = linkify(l.message);
               const color = l.data?.hap?.value?.color;
+              const time = l.timestamp
+                ? new Date(l.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : '';
               return (
                 <div
                   key={l.id}
@@ -73,6 +76,14 @@ export function ConsoleSidebar({ position }) {
                   )}
                   style={color ? { color } : {}}
                 >
+                  {time && (
+                    <span
+                      className="mr-1.5 select-none"
+                      style={{ color: 'color-mix(in srgb, var(--foreground) 35%, transparent)' }}
+                    >
+                      {time}
+                    </span>
+                  )}
                   <span dangerouslySetInnerHTML={{ __html: message }} />
                   {l.count ? ` (${l.count})` : ''}
                 </div>

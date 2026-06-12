@@ -53,6 +53,7 @@ export const defaultSettings = {
   consolePosition: 'right',
   isSoundsOpen: false,
   soundsPosition: 'left',
+  isAgentOpen: false,
 };
 
 let search = null;
@@ -102,6 +103,7 @@ export function useSettings() {
     multiChannelOrbits: parseBoolean(state.multiChannelOrbits),
     isConsoleOpen: parseBoolean(state.isConsoleOpen),
     isSoundsOpen: parseBoolean(state.isSoundsOpen),
+    isAgentOpen: parseBoolean(state.isAgentOpen),
   };
 }
 
@@ -112,6 +114,7 @@ export const setIsPanelOpened = (bool) => settingsMap.setKey('isPanelOpen', bool
 export const setIsZen = (active) => settingsMap.setKey('isZen', !!active);
 export const setIsConsoleOpen = (open) => settingsMap.setKey('isConsoleOpen', !!open);
 export const setIsSoundsOpen = (open) => settingsMap.setKey('isSoundsOpen', !!open);
+export const setIsAgentOpen = (open) => settingsMap.setKey('isAgentOpen', !!open);
 
 const patternSetting = (key) =>
   register(key, (value, pat) =>

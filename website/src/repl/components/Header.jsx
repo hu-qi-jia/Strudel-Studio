@@ -2,7 +2,7 @@ import { useState } from 'react';
 import PlayCircleIcon from '@heroicons/react/20/solid/PlayCircleIcon';
 import StopCircleIcon from '@heroicons/react/20/solid/StopCircleIcon';
 import cx from '@src/cx.mjs';
-import { useSettings, setIsZen, setIsPanelOpened, setIsConsoleOpen, setIsSoundsOpen } from '../../settings.mjs';
+import { useSettings, setIsZen, setIsPanelOpened, setIsConsoleOpen, setIsSoundsOpen, setIsAgentOpen } from '../../settings.mjs';
 import { Modal } from './Modal.jsx';
 import { PatternsTab } from './panel/PatternsTab.jsx';
 import { Reference } from './panel/Reference.jsx';
@@ -15,7 +15,7 @@ const baseNoTrailing = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL
 export function Header({ context, embedded = false }) {
   const { started, pending, isDirty, activeCode, handleTogglePlay, handleEvaluate, handleShuffle } = context;
   const isEmbedded = typeof window !== 'undefined' && (embedded || window.location !== window.parent.location);
-  const { isZen, isButtonRowHidden, isCSSAnimationDisabled, fontFamily, isPanelOpen, isConsoleOpen, isSoundsOpen } = useSettings();
+  const { isZen, isButtonRowHidden, isCSSAnimationDisabled, fontFamily, isPanelOpen, isConsoleOpen, isSoundsOpen, isAgentOpen } = useSettings();
   const [showPatterns, setShowPatterns] = useState(false);
   const [showReference, setShowReference] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -139,7 +139,7 @@ export function Header({ context, embedded = false }) {
 
         {/* 第二行：play / update 按钮（与 patterns 左侧对齐） */}
         {!isZen && !isButtonRowHidden && (
-          <div className="flex items-start w-full py-0.5 px-2 gap-1.5 pb-2.5">
+          <div className="flex items-center w-full py-0.5 px-2 gap-1.5 pb-2.5">
             {/* play 按钮 - 带边框矩形样式 */}
             <button
               onClick={handleTogglePlay}
@@ -178,6 +178,25 @@ export function Header({ context, embedded = false }) {
               }}
             >
               update
+            </button>
+
+            {/* 右侧弹性空间 */}
+            <div className="flex-1" />
+
+            {/* agent 按钮 - 第二行最右侧 */}
+            <button
+              onClick={() => setIsAgentOpen(!isAgentOpen)}
+              title="agent"
+              className={cx(
+                'px-3 py-0.5 text-[var(--fs-label)] cursor-pointer transition-colors border rounded-sm hover:opacity-80 active:bg-lineBackground',
+                isAgentOpen && 'opacity-50',
+              )}
+              style={{
+                borderColor: 'color-mix(in srgb, var(--foreground) 25%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
+              }}
+            >
+              agent
             </button>
           </div>
         )}

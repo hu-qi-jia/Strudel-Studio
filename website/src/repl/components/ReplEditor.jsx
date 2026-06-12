@@ -1,24 +1,21 @@
 import Loader from '@src/repl/components/Loader';
-import { HorizontalPanel, VerticalPanel } from '@src/repl/components/panel/Panel';
 import { ConsoleSidebar } from '@src/repl/components/panel/ConsoleSidebar';
 import { SoundsSidebar } from '@src/repl/components/panel/SoundsSidebar';
+import { SettingsModal } from '@src/repl/components/panel/SettingsModal';
 import { Code } from '@src/repl/components/Code';
 import UserFacingErrorMessage from '@src/repl/components/UserFacingErrorMessage';
 import { Header } from './Header';
+import { AgentSidebar } from './agent/AgentSidebar';
 import { useSettings } from '@src/settings.mjs';
+import { useLogger } from '@src/repl/components/useLogger';
 
 export default function ReplEditor(Props) {
   const { context, ...editorProps } = Props;
   const { containerRef, editorRef, error, init, pending } = context;
   const settings = useSettings();
-  const { panelPosition, isZen, isConsoleOpen, consolePosition, isSoundsOpen, soundsPosition } = settings;
+  const { isZen, isConsoleOpen, consolePosition, isSoundsOpen, soundsPosition, isAgentOpen } = settings;
 
-  /*
-   * 布局逻辑：
-   * - consolePosition 独立于 panelPosition
-   * - 右侧布局：[编辑器] [Console右侧?] [设置面板右侧?]
-   * - 底部布局：[编辑器 + 设置面板底部?] [Console底部?]
-   */
+  useLogger();
 
   return (
     <div className="h-full flex flex-col relative" {...editorProps}>
@@ -37,8 +34,6 @@ export default function ReplEditor(Props) {
             <Code containerRef={containerRef} editorRef={editorRef} init={init} />
           </div>
           <UserFacingErrorMessage error={error} />
-          {/* 设置面板 - 底部位置 */}
-          {!isZen && panelPosition === 'bottom' && <HorizontalPanel context={context} />}
           {/* Console - 底部位置 */}
           {!isZen && isConsoleOpen && consolePosition === 'bottom' && (
             <ConsoleSidebar position="bottom" />
@@ -54,9 +49,12 @@ export default function ReplEditor(Props) {
           <ConsoleSidebar position="right" />
         )}
 
-        {/* 设置面板 - 右侧位置（在 console 右侧） */}
-        {!isZen && panelPosition === 'right' && <VerticalPanel context={context} />}
+        {/* Agent - 右侧位置（最右侧） */}
+        {!isZen && isAgentOpen && <AgentSidebar context={context} />}
       </div>
+
+      {/* 设置弹窗 */}
+      <SettingsModal context={context} />
     </div>
   );
 }
