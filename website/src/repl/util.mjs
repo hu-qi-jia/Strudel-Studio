@@ -55,7 +55,9 @@ export const parseJSON = (json) => {
   try {
     return JSON.parse(json);
   } catch {
-    return '{}';
+    // 失败时返回空对象，保持与成功路径（对象）类型一致，
+    // 避免 `.id`/`.collection` 等属性访问在异常路径下读到字符串的属性。
+    return {};
   }
 };
 

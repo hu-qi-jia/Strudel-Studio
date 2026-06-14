@@ -144,6 +144,18 @@ export function useReplContext() {
         msg = `Default code has been loaded`;
       }
       editor.setCode(code);
+      // 给初始 pattern 分配稳定 id。初始 viewingPatternData.id 为空字符串，
+      // 若不在此处预先分配，首次 eval 会在 afterEval 里生成新 nanoid，
+      // 导致 agent 的 projectId 从 hash fallback 跳到 pattern_<id>，对话被意外重置。
+      const initialViewing = getViewingPatternData();
+      if (!userPattern.isValidID(initialViewing?.id)) {
+        setViewingPatternData({
+          ...initialViewing,
+          id: createPatternID(),
+          code,
+          collection: userPattern.collection,
+        });
+      }
       setDocumentTitle(code);
       logger(`Welcome to Strudel! ${msg} Press play or hit ctrl+enter to run it!`, 'highlight');
     });
@@ -219,8 +231,15 @@ export function useReplContext() {
   const handleShare = async () => shareCode(replState.code);
 
   const handleExport = async (begin, end, sampleRate, maxPolyphony, multiChannelOrbits, downloadName = undefined) => {
+    // 1) 先停掉调度器：导出期间绝不能让实时调度器继续触发 getTrigger，否则它会和下面
+    //    AudioContext 的临时切换产生竞态——在 context 被换掉/关闭的窗口里触发，
+    //    audioWorklet.addModule / 采样 fetch 失败，抛出 "[getTrigger] error: Failed to fetch"。
+    editorRef.current.repl.scheduler.stop();
     try {
-      await editorRef.current.evaluate(false);
+      // 2) 用 autostart=false 刷新当前代码对应的 pattern。
+      //    不能用 editorRef.current.evaluate()：它无参，内部 this.repl.evaluate(this.code)
+      //    会 autostart，把刚停掉的调度器又启动起来，重新引入竞态。
+      await editorRef.current.repl.evaluate(editorRef.current.code, false);
       editorRef.current.repl.scheduler.stop();
       const pattern = editorRef.current.repl.state.pattern;
       if (!pattern) {
@@ -237,17 +256,18 @@ export function useReplContext() {
         downloadName,
       );
     } finally {
-      // 确保恢复正常的 AudioContext
-      const { latestCode, maxPolyphony, audioDeviceName, multiChannelOrbits } = settingsMap.get();
+      // 3) 恢复实时音频路径：renderPatternAudio 已把全局 context 换回 liveCtx，
+      //    这里负责把它重新武装好——worklet 缓存还指向离线 context，需要重载；
+      //    polyphony 用应用设置（而非导出时填的临时值）重置；resume 确保 running。
+      const { maxPolyphony, audioDeviceName, multiChannelOrbits } = settingsMap.get();
       try {
         await initAudio({
-          latestCode,
           maxPolyphony,
           audioDeviceName,
           multiChannelOrbits,
         });
       } catch (e) {
-        // 恢复音频上下文失败时静默处理
+        // 恢复音频上下文失败时记录，但不掩盖导出本身的结果
         console.warn('[export] failed to restore audio context:', e);
       }
       editorRef.current.repl.scheduler.stop();

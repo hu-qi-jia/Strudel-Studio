@@ -1,15 +1,34 @@
 import { useStore } from '@nanostores/react';
 import { $modelConfig, providerDefaults } from '../../../agent/store.mjs';
-import { FormItem, SelectInput, NumberSlider } from '../Forms.jsx';
+import { FormItem, SelectInput, NumberSlider, Checkbox } from '../Forms.jsx';
 
 const providerOptions = {
-  anthropic: 'Anthropic 兼容',
-  openai: 'OpenAI 兼容',
+  anthropic: 'Anthropic Compatible',
+  openai: 'OpenAI Compatible',
   gemini: 'Gemini',
+};
+
+const providerHints = {
+  openai: {
+    urlSublabel: 'Compatible with DeepSeek, Moonshot, GLM, etc.',
+    urlPlaceholder: 'https://api.openai.com/v1',
+    modelPlaceholder: 'gpt-4o / deepseek-chat / moonshot-v1-8k',
+  },
+  anthropic: {
+    urlSublabel: 'Compatible with Anthropic-format third-party APIs',
+    urlPlaceholder: 'https://api.anthropic.com/v1',
+    modelPlaceholder: 'claude-sonnet-4-20250514',
+  },
+  gemini: {
+    urlSublabel: 'Google Gemini API, no Base URL required',
+    urlPlaceholder: '',
+    modelPlaceholder: 'gemini-2.5-flash',
+  },
 };
 
 export function ModelSection() {
   const config = useStore($modelConfig);
+  const hints = providerHints[config.provider] || providerHints.openai;
 
   const updateField = (key, value) => {
     $modelConfig.setKey(key, value);
@@ -32,7 +51,10 @@ export function ModelSection() {
         />
       </FormItem>
 
-      <FormItem label="API Key" sublabel="stored locally, never sent to third-party servers">
+      <FormItem
+        label="API Key"
+        sublabel="stored in this browser only (localStorage) — anyone with page/XSS access can read it. Use a key you can rotate."
+      >
         <input
           type="password"
           value={config.apiKey}
@@ -50,12 +72,12 @@ export function ModelSection() {
         />
       </FormItem>
 
-      <FormItem label="Base URL" sublabel="leave empty to use default endpoint">
+      <FormItem label="Base URL" sublabel={hints.urlSublabel}>
         <input
           type="text"
           value={config.baseUrl}
           onChange={(e) => updateField('baseUrl', e.target.value)}
-          placeholder={providerDefaults[config.provider]?.baseUrl || ''}
+          placeholder={hints.urlPlaceholder}
           className="w-full px-2 py-1 border outline-none text-foreground"
           style={{
             height: '32px',
@@ -73,7 +95,7 @@ export function ModelSection() {
           type="text"
           value={config.model}
           onChange={(e) => updateField('model', e.target.value)}
-          placeholder={providerDefaults[config.provider]?.model || ''}
+          placeholder={hints.modelPlaceholder}
           className="w-full px-2 py-1 border outline-none text-foreground"
           style={{
             height: '32px',
@@ -101,9 +123,29 @@ export function ModelSection() {
           value={parseInt(config.maxTokens) || 4096}
           onChange={(v) => updateField('maxTokens', String(v))}
           min={256}
-          max={16384}
-          step={256}
+          max={65536}
+          step={1024}
         />
+      </FormItem>
+
+      <FormItem label="Advanced">
+        <div className="flex flex-col gap-2">
+          {config.provider === 'openai' && (
+            <>
+              <Checkbox
+                label="Parallel Tool Calls"
+                value={config.parallelToolCalls !== 'false'}
+                onChange={(e) => updateField('parallelToolCalls', e.target.checked ? 'true' : 'false')}
+              />
+              <span
+                className="text-[var(--fs-hint)]"
+                style={{ color: 'color-mix(in srgb, var(--foreground) 40%, transparent)' }}
+              >
+                Allow the model to call multiple tools simultaneously. Off by default — code-editing tools share editor state and can race if run in parallel.
+              </span>
+            </>
+          )}
+        </div>
       </FormItem>
     </div>
   );

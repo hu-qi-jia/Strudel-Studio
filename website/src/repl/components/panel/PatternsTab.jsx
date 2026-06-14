@@ -125,9 +125,12 @@ function UserPatterns({ context }) {
 
         <ActionButton
           label="delete-all"
-          onClick={() => {
-            const { data } = userPattern.clearAll();
-            updateCodeWindow(context, data);
+          onClick={async () => {
+            // clearAll 返回 Promise（confirmDialog 是异步的），必须 await
+            const result = await userPattern.clearAll();
+            // 用户在确认框点了取消时 result 为 undefined，此时什么都不做
+            if (!result) return;
+            updateCodeWindow(context, result.data);
           }}
         />
       </div>

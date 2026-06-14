@@ -1,333 +1,170 @@
-import { editorTools } from './tools.mjs';
+// providers.mjs - AI SDK provider 创建 + 消息转换
+// System Prompt 已迁移到 ContextManager.mjs（动态构建）
+// 意图检测已移除 - 使用 toolChoice: 'auto' 让 LLM 自己决定
 
-const SYSTEM_PROMPT = `You are an AI assistant for Strudel, a music live-coding environment based on TidalCycles.
-You help users write, modify, and debug Strudel code.
-Use the provided tools to read and modify the code in the editor.
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { modelMessageSchema } from 'ai';
+import { formatBytes } from './utils.mjs';
 
-Strudel uses mini notation to describe musical patterns, for example:
-- s("bd sd hh oh") plays drum hits
-- note("c3 eb3 g3").s("sawtooth") plays notes
-- $: prefix means the pattern loops every cycle
-- .bank("tr909") switches drum machine sound bank
-- .slow(2) slows the pattern down by 2x
-- .fast(2) speeds the pattern up by 2x
-- .rev() reverses the pattern
-- .every(3, x => x.rev()) applies an effect every 3rd cycle
+/**
+ * Create AI SDK model instance from config.
+ * OpenAI compatible mode uses .chat() for Chat Completions API,
+ * since third-party providers don't support the Responses API.
+ */
+export function getModel(config) {
+  const temperature = parseFloat(config.temperature) || 0.7;
 
-CRITICAL - The following methods/functions do NOT exist in Strudel and will cause "is not defined" errors:
-- ❌ .reverb() — does NOT exist! Use .room() and .size() instead
-- ❌ .echo() — does NOT exist! Use .delay() instead
-- ❌ .chorus() — does NOT exist!
-- ❌ .flanger() — does NOT exist!
-- ❌ .phaser() — does NOT exist!
-- ❌ .compressor() — does NOT exist!
-- ❌ .limiter() — does NOT exist!
-- ❌ .wah() — does NOT exist!
-- ❌ .tremolo() — DOES exist but only for specific synth types
-
-Available effects and controls (method chains on patterns):
-- Reverb: .room(0.7).size(0.8) — room sets reverb level, size sets room size
-- Delay: .delay(0.5).delaytime(0.25).delayfeedback(0.7)
-- Filter: .lpf(1000).lpq(5) for low-pass, .hpf(500) for high-pass
-- Distortion: .shape(0.5) or .drive(0.5)
-- Gain: .gain(0.8) or .amp(0.8)
-- Panning: .pan(0.5)
-- Dry/Wet: .dry(0.5) (0=wet, 1=dry)
-- Crush/bitcrush: .crush(8)
-- Attack/Release: .attack(0.01).release(0.3)
-- Sustain: .sustain(0.5)
-- Band-pass filter: .bandf(1000).bandq(5)
-
-Common sound sources:
-- .s("piano") or .s("superpiano") for piano sounds
-- .s("sawtooth"), .s("supersaw") for saw waves
-- .s("square"), .s("supersquare") for square waves
-- .s("sine"), .s("supersine") for sine waves
-- .s("bd"), .s("sd"), .s("hh"), .s("oh") for drum hits
-
-Example piano with reverb:
-note("c3 e3 g3 c4").s("superpiano").room(0.7).size(0.8).gain(0.8)
-
-When the user asks to modify code, first use read_code to see the current code, then use write_code or replace_code to modify it.
-After modifying, you can use execute_code to let the user hear the result.
-Always explain what you are doing and why.`;
-
-// OpenAI 兼容 provider（覆盖 DeepSeek、Ollama、one-api 等兼容端点）
-const openaiProvider = {
-  async streamChat(messages, config, tools, signal) {
-    const url = `${config.baseUrl || 'https://api.openai.com'}/v1/chat/completions`;
-    const body = {
-      model: config.model,
-      messages,
-      stream: true,
-      temperature: parseFloat(config.temperature) || 0.7,
-      max_tokens: parseInt(config.maxTokens) || 4096,
-    };
-    if (tools && tools.length > 0) {
-      body.tools = tools;
-      body.tool_choice = 'auto';
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`OpenAI API error: ${res.status} ${err}`);
-    }
-    return res;
-  },
-
-  formatMessages(messages) {
-    const formatted = messages
-      .filter((m) => m.role !== 'system' || m.role === 'system')
-      .map((m) => {
-        const msg = { role: m.role, content: m.content || '' };
-        // 处理工具调用
-        if (m.toolInvocations && m.toolInvocations.length > 0) {
-          msg.tool_calls = m.toolInvocations.map((inv) => ({
-            id: inv.toolCallId,
-            type: 'function',
-            function: {
-              name: inv.toolName,
-              arguments: JSON.stringify(inv.args),
-            },
-          }));
-          // 如果有 tool_calls，content 可能为空
-          if (!msg.content) delete msg.content;
-        }
-        // 工具结果消息
-        if (m.role === 'tool') {
-          msg.tool_call_id = m.toolCallId;
-          msg.content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-        }
-        return msg;
+  switch (config.provider) {
+    case 'openai': {
+      const openai = createOpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl || undefined,
       });
-
-    // 验证：确保每个 assistant 的 tool_calls 都有对应的 tool result
-    const validated = [];
-    for (let i = 0; i < formatted.length; i++) {
-      const msg = formatted[i];
-      validated.push(msg);
-
-      if (msg.role === 'assistant' && msg.tool_calls) {
-        const toolCallIds = msg.tool_calls.map((tc) => tc.id);
-        const resultIds = [];
-        for (let j = i + 1; j < formatted.length; j++) {
-          if (formatted[j].role === 'tool') {
-            resultIds.push(formatted[j].tool_call_id);
-          } else {
-            break;
-          }
-        }
-        const missingIds = toolCallIds.filter((id) => !resultIds.includes(id));
-        for (const id of missingIds) {
-          validated.push({
-            role: 'tool',
-            tool_call_id: id,
-            content: 'Tool execution result not available',
-          });
-        }
-      }
+      return openai.chat(config.model, { temperature });
     }
-
-    return validated;
-  },
-
-  parseSSELine(line) {
-    if (!line || !line.startsWith('data: ')) return null;
-    const data = line.slice(6).trim();
-    if (data === '[DONE]') return { done: true };
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
-  },
-};
-
-// Anthropic 兼容 provider
-const anthropicProvider = {
-  async streamChat(messages, config, tools, signal) {
-    const url = `${config.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
-    // 分离 system 消息
-    const systemMessages = messages.filter((m) => m.role === 'system');
-    const nonSystemMessages = messages.filter((m) => m.role !== 'system');
-    const body = {
-      model: config.model,
-      messages: nonSystemMessages,
-      stream: true,
-      max_tokens: parseInt(config.maxTokens) || 4096,
-      temperature: parseFloat(config.temperature) || 0.7,
-    };
-    if (systemMessages.length > 0) {
-      body.system = systemMessages.map((m) => ({ type: 'text', text: m.content })).pop().text;
-    }
-    if (tools && tools.length > 0) {
-      body.tools = tools.map((t) => ({
-        name: t.function.name,
-        description: t.function.description,
-        input_schema: t.function.parameters,
-      }));
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Anthropic API error: ${res.status} ${err}`);
-    }
-    return res;
-  },
-
-  formatMessages(messages) {
-    return messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => {
-        if (m.role === 'tool') {
-          return {
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result',
-                tool_use_id: m.toolCallId,
-                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-              },
-            ],
-          };
-        }
-        const msg = { role: m.role, content: m.content || '' };
-        if (m.toolInvocations && m.toolInvocations.length > 0) {
-          msg.content = m.content || '';
-          msg.content = [
-            ...(msg.content ? [{ type: 'text', text: msg.content }] : []),
-            ...m.toolInvocations.map((inv) => ({
-              type: 'tool_use',
-              id: inv.toolCallId,
-              name: inv.toolName,
-              input: inv.args,
-            })),
-          ];
-        }
-        return msg;
-      });
-  },
-
-  parseSSELine(line) {
-    if (!line || !line.startsWith('data: ')) return null;
-    const data = line.slice(6).trim();
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
-  },
-};
-
-// Gemini provider
-const geminiProvider = {
-  async streamChat(messages, config, tools, signal) {
-    const url = `${config.baseUrl || 'https://generativelanguage.googleapis.com'}/v1beta/models/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`;
-    const contents = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => {
-        const role = m.role === 'assistant' ? 'model' : 'user';
-        const parts = [];
-        if (m.content) {
-          parts.push({ text: m.content });
-        }
-        if (m.toolInvocations) {
-          for (const inv of m.toolInvocations) {
-            parts.push({
-              functionCall: { name: inv.toolName, args: inv.args },
-            });
-          }
-        }
-        if (m.role === 'tool') {
-          parts.push({
-            functionResponse: {
-              name: m.toolName || 'unknown',
-              response: { result: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) },
-            },
-          });
-        }
-        return { role, parts };
-      });
-    const body = {
-      contents,
-      generationConfig: {
-        temperature: parseFloat(config.temperature) || 0.7,
-        maxOutputTokens: parseInt(config.maxTokens) || 4096,
-      },
-    };
-    // system instruction
-    const systemMsg = messages.find((m) => m.role === 'system');
-    if (systemMsg) {
-      body.systemInstruction = { parts: [{ text: systemMsg.content }] };
-    }
-    if (tools && tools.length > 0) {
-      body.tools = [
-        {
-          functionDeclarations: tools.map((t) => ({
-            name: t.function.name,
-            description: t.function.description,
-            parameters: t.function.parameters,
-          })),
+    case 'anthropic': {
+      const anthropic = createAnthropic({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl || undefined,
+        headers: {
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
-      ];
+      });
+      return anthropic(config.model, { temperature });
     }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Gemini API error: ${res.status} ${err}`);
+    case 'gemini': {
+      const google = createGoogleGenerativeAI({
+        apiKey: config.apiKey,
+      });
+      return google(config.model, { temperature });
     }
-    return res;
-  },
-
-  formatMessages(messages) {
-    return messages; // Gemini uses its own format in streamChat
-  },
-
-  parseSSELine(line) {
-    if (!line || !line.startsWith('data: ')) return null;
-    const data = line.slice(6).trim();
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
+    default: {
+      const openai = createOpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl || undefined,
+      });
+      return openai.chat(config.model, { temperature });
     }
-  },
-};
-
-export function getProvider(name) {
-  switch (name) {
-    case 'openai':
-      return openaiProvider;
-    case 'anthropic':
-      return anthropicProvider;
-    case 'gemini':
-      return geminiProvider;
-    default:
-      return openaiProvider;
   }
 }
 
-export { SYSTEM_PROMPT };
+/**
+ * Build providerOptions for streamText based on config.
+ */
+export function getProviderOptions(config) {
+  const options = {};
+  if (config.provider === 'openai') {
+    options.openai = {
+      parallelToolCalls: config.parallelToolCalls !== 'false',
+    };
+  }
+  return options;
+}
+
+// ─── Message Conversion ──────────────────────────────────────────────
+
+export function toCoreMessages(uiMessages) {
+  const result = [];
+  for (const msg of uiMessages) {
+    if (msg.role === 'user') {
+      // 跨 provider 安全：不向模型发原始音频（仅 Gemini 可靠支持，Anthropic 不支持）。
+      // 改为把附件以「合成文本提示」告知模型——含 handleId，让模型调本地工具分析。
+      // content 仍为字符串，不破坏 ContextManager 的 token 估算 / 关键词收集。
+      let content = msg.content || '';
+      const atts = Array.isArray(msg.attachments) ? msg.attachments : [];
+      if (atts.length > 0) {
+        const lines = atts.map(
+          (a) =>
+            `- "${a.name}" (${a.mime}, ${formatBytes(a.size)}) — read it via a tool using handleId="${a.handleId}"`,
+        );
+        content +=
+          `\n\n[User attached ${atts.length} file(s). Do not assume their contents — use the provided tools ` +
+          `(e.g. analyze_audio with the handleId) to inspect them, then act on what the tool returns.]\n` +
+          lines.join('\n');
+      }
+      result.push({ role: 'user', content });
+    } else if (msg.role === 'assistant') {
+      // 只保留「已完成且结构完整」的工具调用：toolCallId / toolName 缺失会导致
+      // assistant 的 tool-call 与随后的 tool-result 无法配对，触发 v6 schema 校验失败。
+      // 这些调用会同时从 assistant(tool-call) 和 tool(tool-result) 两侧剔除，保持配对。
+      const completedInvocations = (msg.toolInvocations || []).filter(
+        (inv) =>
+          inv.state === 'result' &&
+          typeof inv.toolCallId === 'string' &&
+          inv.toolCallId.length > 0 &&
+          typeof inv.toolName === 'string' &&
+          inv.toolName.length > 0,
+      );
+      const hasToolCalls = completedInvocations.length > 0;
+
+      // 构建 assistant 消息的 content parts
+      const parts = [];
+
+      // 添加 text part（如果有内容）
+      if (msg.content && msg.content.trim()) {
+        parts.push({ type: 'text', text: msg.content });
+      }
+
+      // 添加 tool-call parts
+      for (const inv of completedInvocations) {
+        parts.push({
+          type: 'tool-call',
+          toolCallId: inv.toolCallId,
+          toolName: inv.toolName,
+          input: inv.args,
+        });
+      }
+
+      // 跳过空消息
+      if (parts.length === 0) continue;
+
+      // 添加 assistant 消息
+      result.push({ role: 'assistant', content: parts });
+
+      // 如果有工具调用,添加对应的 tool 消息
+      if (hasToolCalls) {
+        const toolResults = completedInvocations.map((inv) => {
+          // AI SDK v6: tool-result 的 output 必须是 discriminated union：
+          //   { type: 'text', value: string } | { type: 'json', value: JSONValue }
+          // 绝不能用 { result: ... } 这种任意对象——v6 的 zod 校验会抛
+          // "The messages do not match the ModelMessage[] schema"。
+          // inv.result 在 tool-result 事件回调里已被规范化为字符串，统一按 text 包装。
+          const value =
+            typeof inv.result === 'string'
+              ? inv.result
+              : inv.result == null
+                ? '(no output)'
+                : JSON.stringify(inv.result);
+          return {
+            type: 'tool-result',
+            toolCallId: inv.toolCallId,
+            toolName: inv.toolName,
+            output: { type: 'text', value },
+          };
+        });
+
+        result.push({
+          role: 'tool',
+          content: toolResults,
+        });
+      }
+    }
+  }
+  // 开发期护栏：用 SDK 自带的 ModelMessage[] schema 校验产物。
+  // 手写的 toCoreMessages 是 schema 错误的高发面（曾因 output 格式不匹配 v6 触发
+  // "messages do not match the ModelMessage[] schema"）。DEV 模式下尽早暴露，
+  // 生产模式不付出运行时开销。
+  if (import.meta.env?.DEV) {
+    const r = modelMessageSchema.array().safeParse(result);
+    if (!r.success) {
+      console.error(
+        '[agent] toCoreMessages produced invalid ModelMessage[]:',
+        r.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`),
+        result,
+      );
+    }
+  }
+  return result;
+}

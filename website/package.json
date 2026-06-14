@@ -11,12 +11,16 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.83",
+    "@ai-sdk/google": "^3.0.81",
+    "@ai-sdk/openai": "^3.0.70",
     "@algolia/client-search": "^5.20.0",
     "@astro-community/astro-embed-youtube": "^0.5.6",
     "@astrojs/mdx": "^4.0.7",
     "@astrojs/react": "^4.1.6",
     "@astrojs/rss": "^4.0.11",
     "@astrojs/tailwind": "^5.1.5",
+    "@codemirror/commands": "^6.8.0",
     "@docsearch/css": "^3.8.3",
     "@docsearch/react": "^3.8.3",
     "@headlessui/react": "^2.2.0",
@@ -52,6 +56,7 @@
     "@types/node": "^22.10.10",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "ai": "^6.0.202",
     "astro": "^5.1.9",
     "claviature": "^0.1.0",
     "date-fns": "^4.1.0",
@@ -67,7 +72,8 @@
     "rehype-urls": "^1.2.0",
     "remark-toc": "^9.0.0",
     "tailwindcss": "^3.4.17",
-    "worker-timers": "^8.0.13"
+    "worker-timers": "^8.0.13",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@vite-pwa/astro": "^0.5.0",

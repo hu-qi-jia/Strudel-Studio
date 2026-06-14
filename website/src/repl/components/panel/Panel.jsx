@@ -60,7 +60,7 @@ export function VerticalPanel({ context }) {
       <ResizeHandle side="left" onResize={handleResize} minSize={280} maxSize={800} />
       {isPanelOpen ? (
         <div className={cx('flex flex-col h-full flex-1 min-w-0')}>
-          <div className="flex justify-between w-full ">
+          <div className="flex items-center justify-between w-full ">
             <Tabs setTab={setTab} tab={tab} />
             <PanelActionButton settings={settings} />
           </div>
@@ -187,7 +187,7 @@ function CloseButton({ onClick }) {
     <button
       onClick={onClick}
       className={cx(
-        'text-foreground hover:opacity-50 cursor-pointer p-0.5 flex items-center justify-center',
+        'text-foreground hover:opacity-50 cursor-pointer flex items-center justify-center w-6 h-6 rounded hover:bg-foreground/10 transition-colors',
       )}
       aria-label="Close Menu"
     >

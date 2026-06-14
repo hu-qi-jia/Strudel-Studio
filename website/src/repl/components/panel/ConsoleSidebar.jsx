@@ -52,7 +52,7 @@ export function ConsoleSidebar({ position }) {
           <span className="text-[var(--fs-label)] font-medium select-none">console</span>
           <button
             onClick={() => setIsConsoleOpen(false)}
-            className="text-foreground hover:opacity-50 cursor-pointer p-0.5 flex items-center justify-center"
+            className="text-foreground hover:opacity-50 cursor-pointer flex items-center justify-center w-6 h-6 rounded hover:bg-foreground/10 transition-colors"
           >
             <XMarkIcon className="w-3.5 h-3.5" />
           </button>
