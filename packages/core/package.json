@@ -33,7 +33,6 @@
   "dependencies": {
     "fraction.js": "^5.2.1"
   },
-  "gitHead": "0e26d4e741500f5bae35b023608f062a794905c2",
   "devDependencies": {
     "vite": "^6.0.11",
     "vitest": "^3.0.4"

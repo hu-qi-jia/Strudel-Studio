@@ -5,9 +5,9 @@
   "description": "Port of tidalcycles to javascript",
   "scripts": {
     "setup": "pnpm i",
-    "pretest": "npm run jsdoc-json",
-    "prebuild": "npm run jsdoc-json",
-    "prestart": "npm run jsdoc-json",
+    "pretest": "npm run jsdoc-json && npm run build-doc-fragments",
+    "prebuild": "npm run jsdoc-json && npm run build-doc-fragments",
+    "prestart": "npm run jsdoc-json && npm run build-doc-fragments",
     "test": "npm run pretest && vitest run --version",
     "test-ui": "npm run pretest && vitest --ui",
     "test-coverage": "npm run pretest && vitest --coverage",
@@ -21,6 +21,7 @@
     "osc": "cd packages/osc && npm run server",
     "jsdoc": "jsdoc packages/ -c jsdoc/jsdoc.config.json",
     "jsdoc-json": "jsdoc packages/ --template ./node_modules/jsdoc-json --destination doc.json -c jsdoc/jsdoc.config.json",
+    "build-doc-fragments": "node scripts/build-doc-fragments.mjs",
     "lint": "eslint . --quiet",
     "codeformat": "prettier --write .",
     "format-check": "prettier --check .",
@@ -83,7 +84,6 @@
     "vitest": "^3.0.4",
     "vite-plugin-bundle-audioworklet": "workspace:*"
   },
-  "main": "strudel_measure.js",
   "directories": {
     "doc": "docs",
     "example": "examples",

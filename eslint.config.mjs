@@ -93,4 +93,12 @@ export default [
       },
     },
   },
+  {
+    // 测试文件可引入测试运行器与测试工具（vitest 在根/各 package 的 devDeps，
+    // 但 website 下无 package.json 声明它）。测试 runner 不算「外部依赖」，放宽此规则。
+    files: ['**/*.test.mjs', '**/*.spec.mjs'],
+    rules: {
+      'import/no-extraneous-dependencies': 'off',
+    },
+  },
 ];

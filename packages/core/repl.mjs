@@ -1,7 +1,7 @@
 import { NeoCyclist } from './neocyclist.mjs';
 import { Cyclist } from './cyclist.mjs';
 import { evaluate as _evaluate } from './evaluate.mjs';
-import { errorLogger, logger } from './logger.mjs';
+import { errorLogger, logger, resetErrorLog } from './logger.mjs';
 import { setTime } from './time.mjs';
 import { evalScope } from './evaluate.mjs';
 import { register, Pattern, isPattern, silence, stack } from './pattern.mjs';
@@ -187,6 +187,9 @@ export function repl({
     if (!code) {
       throw new Error('no code to evaluate');
     }
+    // 重新求值意味着用户改了代码或重新播放：清空"已见错误"集合，
+    // 这样新一轮里同一错误可以再提示一次（去重只针对单次播放期间的重复触发）。
+    resetErrorLog();
     try {
       updateState({ code, pending: true });
       await injectPatternMethods();

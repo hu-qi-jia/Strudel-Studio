@@ -370,7 +370,7 @@ function getWorker() {
     };
     _worker = w;
     return w;
-  } catch (e) {
+  } catch {
     // 不支持 module worker 等环境：降级到主线程同步执行
     _workerFailed = true;
     return null;
@@ -396,8 +396,8 @@ async function runInWorker(payload, transferList) {
 // ToolCallBadge 干净展示，且模型能读到它自纠正。
 export async function analyze(handleId, ctx) {
   try {
-    if (!ctx?.attachments?.read) throw new Error('attachments:read capability not granted');
-    if (!ctx?.audio?.decode) throw new Error('audio:decode capability not granted');
+    if (!ctx?.attachments?.read) throw new Error('attachments reader not available');
+    if (!ctx?.audio?.decode) throw new Error('audio decoder not available');
 
     const buf = await ctx.attachments.read(handleId); // ArrayBuffer
     const audioBuf = await ctx.audio.decode(buf); // AudioBuffer（不发声）

@@ -1,167 +1,161 @@
+import { useState, useRef, useEffect } from 'react';
 import cx from '@src/cx.mjs';
+import './agent.css';
 import { formatBytes } from '../../agent/utils.mjs';
+import { splitThinking } from '../../agent/thinkingParse.mjs';
 
-export function ChatMessage({ message, renderers = {} }) {
+export function ChatMessage({ message, renderers = {}, isStreaming = false }) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) return null;
 
   return (
-    <div className={cx('flex flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
-      {/* 角色标签 */}
-      <span
-        className="text-[var(--fs-label)] select-none"
-        style={{ color: 'color-mix(in srgb, var(--foreground) 50%, transparent)' }}
-      >
-        {isUser ? 'you' : 'agent'}
-      </span>
+    <div className={cx('agent-msg', isUser ? 'agent-msg--user' : 'agent-msg--agent')}>
+      <span className="agent-role">{isUser ? 'you' : 'agent'}</span>
 
-      {/* 消息内容 */}
+      {/* Native reasoning stream (reasoning): auto-open during streaming, real-time scroll */}
+      {message.reasoning && message.reasoning.trim() && !isUser && (
+        <ThinkingBlock text={message.reasoning} autoOpen={isStreaming} />
+      )}
+
+      {/* Message body */}
       {message.content && (
-        <div
-          className={cx(
-            'rounded-sm px-2.5 py-1.5 max-w-full overflow-hidden text-[var(--fs-input)]',
-            isUser
-              ? 'bg-foreground/10 text-foreground'
-              : 'bg-transparent text-foreground',
-          )}
-          style={{
-            wordBreak: 'break-word',
-            ...(isUser
-              ? {}
-              : {}),
-          }}
-        >
-          <MessageContent text={message.content} />
+        <div className="agent-bubble">
+          <MessageContent text={message.content} autoOpen={isStreaming} />
         </div>
       )}
 
-      {/* 附件（用户消息） */}
+      {/* Attachments (user messages) — no emoji, use text labels */}
       {isUser && message.attachments && message.attachments.length > 0 && (
-        <div className="flex flex-wrap gap-1 justify-end max-w-full">
+        <div className="agent-tools" style={{ alignItems: 'flex-end' }}>
           {message.attachments.map((a) => (
-            <span
-              key={a.handleId}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[var(--fs-hint)] border rounded-sm max-w-full"
-              style={{
-                borderColor: 'color-mix(in srgb, var(--foreground) 20%, transparent)',
-                backgroundColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)',
-              }}
-              title={`${a.mime} · ${formatBytes(a.size)}`}
-            >
-              <span className="truncate">📎 {a.name}</span>
+            <span key={a.handleId} className="agent-attach" title={`${a.mime} · ${formatBytes(a.size)}`}>
+              <span className="agent-attach-name">{a.name}</span>
             </span>
           ))}
         </div>
       )}
 
-      {/* 工具调用展示 */}
+      {/* Tool calls: collapsible list (reuses thinking block style) + custom renderers */}
       {message.toolInvocations && message.toolInvocations.length > 0 && (
-        <div className="flex flex-col gap-1 w-full">
-          {message.toolInvocations.map((inv, i) => {
-            // 插件可声明自定义渲染器（registry.getRenderers()[toolName]）。
-            // 仅当「有渲染器」且「存在结构化 resultData」时用它；否则回退通用 badge
-            // （核心 13 工具无渲染器、或工具返回的是错误字符串时都走 badge，零影响）。
-            const Renderer = renderers[inv.toolName];
-            return Renderer && inv.resultData ? (
-              <Renderer key={i} invocation={inv} />
-            ) : (
-              <ToolCallBadge key={i} invocation={inv} />
-            );
-          })}
-        </div>
+        <ToolCalls invocations={message.toolInvocations} renderers={renderers} />
       )}
     </div>
   );
 }
 
-function ToolCallBadge({ invocation }) {
-  const isSuccess = invocation.state === 'result';
-  const isCalling = invocation.state === 'call' || invocation.state === 'partial';
-  const name = invocation.toolName || 'tool';
-
-  // Format tool arguments for display
-  const argsDisplay = invocation.args
-    ? Object.entries(invocation.args)
-        .map(([k, v]) => {
-          const val = typeof v === 'string' ? v : JSON.stringify(v);
-          return `${k}: ${val.length > 40 ? val.slice(0, 40) + '...' : val}`;
-        })
-        .join(', ')
-    : '';
-
-  // Format result for display
-  const resultStr = isSuccess && invocation.result
-    ? (typeof invocation.result === 'string' ? invocation.result : JSON.stringify(invocation.result))
-    : '';
-
-  // 多行结果（如 edit_lines 的 before/after diff）用 pre-wrap 展示更多内容；
-  // 单行结果仍用截断 + title。
-  const isMultiline = resultStr.includes('\n');
+// ── Tool calls area: collapsible list of all tool calls (reuses thinking block style)
+//    + plugin custom renderers (e.g. audio analysis panel) ──
+function ToolCalls({ invocations, renderers }) {
+  const custom = [];
+  for (const inv of invocations) {
+    const Renderer = renderers[inv.toolName];
+    if (Renderer && inv.resultData) custom.push(inv);
+  }
 
   return (
-    <div
-      className={cx(
-        'flex flex-col gap-0.5 px-2 py-1 rounded-sm text-[var(--fs-label)]',
-        'border',
-      )}
-      style={{
-        borderColor: 'color-mix(in srgb, var(--foreground) 15%, transparent)',
-        backgroundColor: 'color-mix(in srgb, var(--foreground) 5%, transparent)',
-      }}
-    >
-      <div className="flex items-center gap-1.5">
-        <span style={{ color: 'color-mix(in srgb, var(--foreground) 60%, transparent)' }}>
-          {isCalling ? '...' : isSuccess ? '>' : '!'}
+    <div className="agent-tools">
+      <ToolCallsBlock invocations={invocations} />
+      {custom.map((inv, i) => {
+        const Renderer = renderers[inv.toolName];
+        return <Renderer key={`c-${i}`} invocation={inv} />;
+      })}
+    </div>
+  );
+}
+
+// Collapsible list of all tool calls, reusing the thinking block (<details className="agent-thinking">).
+// Collapsed by default — shows count in summary; expand to see each call's args + result.
+function ToolCallsBlock({ invocations }) {
+  if (invocations.length === 0) return null;
+
+  const completed = invocations.filter((inv) => inv.state === 'result').length;
+  const total = invocations.length;
+
+  return (
+    <details className="agent-thinking">
+      <summary>
+        <span className="agent-tool-name">tools</span>
+        <span className="agent-tool-count" style={{ marginLeft: 'auto' }}>
+          {completed}/{total}
         </span>
-        <span className="font-mono">{name}</span>
-        {argsDisplay && (
-          <span
-            className="truncate"
-            style={{ color: 'color-mix(in srgb, var(--foreground) 45%, transparent)' }}
-          >
-            {argsDisplay}
-          </span>
-        )}
+      </summary>
+      <div className="agent-thinking-body" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {invocations.map((inv, i) => (
+          <ToolCallRow key={i} inv={inv} />
+        ))}
       </div>
-      {isSuccess && resultStr && (
-        isMultiline ? (
-          <pre
-            className="font-mono max-w-full whitespace-pre-wrap break-words max-h-40 overflow-auto m-0"
-            style={{
-              color: 'color-mix(in srgb, var(--foreground) 50%, transparent)',
-              fontSize: 'var(--fs-hint, 11px)',
-            }}
-          >
-            {resultStr.slice(0, 600)}
-          </pre>
-        ) : (
-          <div
-            className="font-mono truncate max-w-full"
-            style={{
-              color: 'color-mix(in srgb, var(--foreground) 50%, transparent)',
-              fontSize: 'var(--fs-hint, 11px)',
-            }}
-            title={resultStr}
-          >
-            {resultStr.slice(0, 120)}
-          </div>
-        )
+    </details>
+  );
+}
+
+function ToolCallRow({ inv }) {
+  const isResult = inv.state === 'result';
+  const isError = isResult && typeof inv.result === 'string' && inv.result.toLowerCase().startsWith('error');
+  const status = !isResult ? 'run' : isError ? 'err' : 'ok';
+  const statusGlyph = status === 'ok' ? '✓' : status === 'err' ? '✗' : '·';
+
+  const argsStr = inv.args ? JSON.stringify(inv.args) : '';
+  const argsDisplay = argsStr.length > 80 ? argsStr.slice(0, 80) + '…' : argsStr;
+
+  return (
+    <div className={`agent-tool is-${status}`}>
+      <div className="agent-tool-head">
+        <span className={`agent-tool-status agent-tool-status--${status}`}>{statusGlyph}</span>
+        <span className="agent-tool-name">{inv.toolName}</span>
+        <span className="agent-tool-args">{argsDisplay}</span>
+      </div>
+      {isResult && inv.result && (
+        <div className="agent-tool-result">{inv.result}</div>
       )}
     </div>
   );
 }
 
-function MessageContent({ text }) {
-  // 简单的代码块渲染
+// ── Collapsible thinking block: auto-open during streaming, real-time auto-scroll to bottom.
+//    Width stays 100% whether open or collapsed (CSS .agent-thinking { width: 100% }). ──
+function ThinkingBlock({ text, autoOpen = false }) {
+  const trimmed = (text || '').trim();
+  const [open, setOpen] = useState(autoOpen);
+  const bodyRef = useRef(null);
+  const autoOpenedRef = useRef(false);
+
+  // One-time auto-open when streaming starts; user can close afterwards (won't re-open).
+  useEffect(() => {
+    if (autoOpen && !autoOpenedRef.current) {
+      setOpen(true);
+      autoOpenedRef.current = true;
+    }
+  }, [autoOpen]);
+
+  // Real-time auto-scroll to bottom while text streams in (only when open).
+  useEffect(() => {
+    if (open && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [trimmed, open]);
+
+  if (!trimmed) return null;
+
+  return (
+    <details className="agent-thinking" open={open} onToggle={(e) => setOpen(e.target.open)}>
+      <summary>
+        <span className="agent-tool-name">thinking</span>
+      </summary>
+      <div className="agent-thinking-body" ref={bodyRef}>{trimmed}</div>
+    </details>
+  );
+}
+
+// Single text segment (thinking stripped): parse ``` code blocks, rest as pre-wrap text.
+function TextWithCode({ text }) {
+  if (!text) return null;
   const parts = [];
   const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
   let lastIndex = 0;
   let match;
-
   while ((match = codeBlockRegex.exec(text)) !== null) {
-    // 代码块前的文本
     if (match.index > lastIndex) {
       parts.push(
         <span key={`t-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>
@@ -169,24 +163,9 @@ function MessageContent({ text }) {
         </span>,
       );
     }
-    // 代码块
-    parts.push(
-      <code
-        key={`c-${match.index}`}
-        className="block font-mono px-2 py-1 rounded-sm my-1 text-[var(--fs-input)]"
-        style={{
-          backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-        }}
-      >
-        {match[2]}
-      </code>,
-    );
+    parts.push(<code key={`c-${match.index}`} className="agent-code">{match[2]}</code>);
     lastIndex = match.index + match[0].length;
   }
-
-  // 剩余文本
   if (lastIndex < text.length) {
     parts.push(
       <span key={`t-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>
@@ -194,6 +173,21 @@ function MessageContent({ text }) {
       </span>,
     );
   }
-
   return <>{parts}</>;
+}
+
+function MessageContent({ text, autoOpen = false }) {
+  const segments = splitThinking(text);
+  if (segments.length === 0) return null;
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.type === 'thinking' ? (
+          <ThinkingBlock key={`th-${i}`} text={seg.text} autoOpen={autoOpen} />
+        ) : (
+          <TextWithCode key={`tx-${i}`} text={seg.text} />
+        ),
+      )}
+    </>
+  );
 }

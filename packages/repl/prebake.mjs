@@ -20,10 +20,13 @@ export async function prebake() {
     // import('@strudel/osc'),
   );
   // load samples
-  const ds = 'https://raw.githubusercontent.com/felixroos/dough-samples/main/';
+  // jsDelivr CDN mirror of the same GitHub repos. raw.githubusercontent.com is
+  // origin-only and slow/throttled on many networks (esp. mainland China); jsDelivr
+  // edge-caches the manifests + .wav buffers for much faster startup & first-play.
+  const ds = 'https://cdn.jsdelivr.net/gh/felixroos/dough-samples@main/';
 
   // TODO: move this onto the strudel repo
-  const ts = 'https://raw.githubusercontent.com/todepond/samples/main/';
+  const ts = 'https://cdn.jsdelivr.net/gh/todepond/samples@main/';
   await Promise.all([
     modulesLoading,
     registerSynthSounds(),

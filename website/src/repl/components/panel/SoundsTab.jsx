@@ -78,6 +78,7 @@ export function SoundsTab() {
         <ButtonGroup
           value={soundsFilter}
           onChange={(value) => settingsMap.setKey('soundsFilter', value)}
+          buttonStyle={{ fontSize: 'var(--fs-label)' }}
           items={{
             samples: 'samples',
             drums: 'drum-machines',
@@ -107,7 +108,7 @@ export function SoundsTab() {
         />
       )}
 
-      <div className="min-h-0 max-h-full grow overflow-auto text-[var(--fs-input)] break-normal bg-background p-2 rounded-md">
+      <div className="min-h-0 max-h-full grow overflow-auto text-[var(--fs-hint)] break-normal bg-background p-2 rounded-md">
         {soundEntries.map(([name, { data, onTrigger }]) => {
           return (
             <span
@@ -139,7 +140,7 @@ export function SoundsTab() {
           );
         })}
         {!soundEntries.length && soundsFilter === 'importSounds' ? (
-          <div className="prose dark:prose-invert min-w-full pt-2 pb-8 px-2" style={{ fontSize: 'var(--fs-input)' }}>
+          <div className="prose dark:prose-invert min-w-full pt-2 pb-8 px-2" style={{ fontSize: 'var(--fs-hint)' }}>
             <ImportSoundsButton onComplete={() => settingsMap.setKey('soundsFilter', 'user')} />
             <p>
               To import sounds into strudel, they must be contained{' '}

@@ -103,30 +103,77 @@ export const getSampleBufferSource = async (hapValue, bank, resolveUrl) => {
   return { bufferSource, offset, bufferDuration, sliceDuration };
 };
 
+// Rewrite raw.githubusercontent.com URLs to the jsDelivr CDN mirror.
+// Why: sample manifests (e.g. tidal-drum-machines.json) hardcode a `_base` that
+// points their .wav buffers back at raw.githubusercontent.com, which is origin-only
+// (no CDN) and throttled/unreachable on many networks (notably mainland China).
+// jsDelivr edge-caches the same public GitHub files and is far faster.
+// Format: raw.githubusercontent.com/USER/REPO/REF/path -> cdn.jsdelivr.net/gh/USER/REPO@REF/path
+function toCdnUrl(url) {
+  const m = url.match(
+    /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.*)$/,
+  );
+  return m ? `https://cdn.jsdelivr.net/gh/${m[1]}/${m[2]}@${m[3]}/${m[4]}` : url;
+}
+
+// 是否为"永久性"加载错误——重试也不会变好的那种（4xx，但排除 408 超时 / 429 限流）。
+// 典型例子：jsDelivr 对 >50MB 的仓库（如 ritchse/tidal-drum-machines、tidalcycles/Dirt-Samples）
+// 一律返回 403 "Package size exceeded"。这类错误每 cycle 重试毫无意义，只会刷日志、浪费请求。
+// 网络中断（TypeError: Failed to fetch）/ 5xx / 408 / 429 则是暂时性的，应当允许立即重试。
+function isPermanentError(err) {
+  const m = err && err.message && err.message.match(/^HTTP (\d{3}) /);
+  if (!m) return false; // 非 HTTP 错误（网络层）→ 视为暂时，允许重试
+  const status = Number(m[1]);
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 export const loadBuffer = (url, ac, s, n = 0) => {
   const label = s ? `sound "${s}:${n}"` : 'sample';
   url = url.replace('#', '%23');
-  if (!loadCache[url]) {
-    logger(`[sampler] load ${label}..`, 'load-sample', { url });
-    const timestamp = Date.now();
-    loadCache[url] = fetch(url)
-      .then((res) => res.arrayBuffer())
-      .then(async (res) => {
-        const took = Date.now() - timestamp;
-        const size = humanFileSize(res.byteLength);
-        // const downSpeed = humanFileSize(res.byteLength / took);
-        logger(`[sampler] load ${label}... done! loaded ${size} in ${took}ms`, 'loaded-sample', { url });
-        const decoded = await ac.decodeAudioData(res);
-        bufferCache[url] = decoded;
-        return decoded;
-      })
-      .catch((err) => {
-        // 加载失败时清除缓存，允许后续重试
-        delete loadCache[url];
-        throw err;
-      });
+  // 永久性错误最多每隔这段时间重试一次，期间直接复用已缓存的失败结果，
+  // 避免每个调度 cycle 都重新 fetch（刷屏 + 拖慢播放 + 可能加剧 CDN 限流）。
+  const PERMANENT_FAIL_TTL = 60_000;
+  const cached = loadCache[url];
+  if (cached && (!cached.permanentFailAt || Date.now() - cached.permanentFailAt < PERMANENT_FAIL_TTL)) {
+    // 命中缓存：成功的加载，或尚未过期的永久性失败，都直接复用。
+    return cached.promise;
   }
-  return loadCache[url];
+  // 否则（未缓存，或永久性失败已过 TTL）→ 重新 fetch。
+  logger(`[sampler] load ${label}..`, 'load-sample', { url });
+  const timestamp = Date.now();
+  // Try the CDN mirror first; fall back to the original URL if it fails
+  // (network error / 404 / jsDelivr not yet indexed) so loading never breaks.
+  const cdnUrl = toCdnUrl(url);
+  const fetchArrayBuffer = (u) =>
+    fetch(u).then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${u}`);
+      return res.arrayBuffer();
+    });
+  const attempt = cdnUrl === url ? fetchArrayBuffer(url) : fetchArrayBuffer(cdnUrl).catch(() => fetchArrayBuffer(url));
+  const entry = { promise: undefined, permanentFailAt: null };
+  entry.promise = attempt
+    .then(async (res) => {
+      const took = Date.now() - timestamp;
+      const size = humanFileSize(res.byteLength);
+      // const downSpeed = humanFileSize(res.byteLength / took);
+      logger(`[sampler] load ${label}... done! loaded ${size} in ${took}ms`, 'loaded-sample', { url });
+      const decoded = await ac.decodeAudioData(res);
+      bufferCache[url] = decoded;
+      return decoded;
+    })
+    .catch((err) => {
+      if (isPermanentError(err)) {
+        // 永久性错误：保留缓存条目并打上时间戳，TTL 内不再重复 fetch（但仍会向上抛出，
+        // 配合 errorLogger 的去重，日志里同一条错误只出现一次）。
+        entry.permanentFailAt = Date.now();
+      } else {
+        // 暂时性错误：清除缓存，让下一个触发立即重试（可能网络已恢复）。
+        delete loadCache[url];
+      }
+      throw err;
+    });
+  loadCache[url] = entry;
+  return entry.promise;
 };
 
 export function reverseBuffer(buffer) {
@@ -156,11 +203,21 @@ function githubPath(base, subpath = '') {
   }
   let [_, path] = base.split('github:');
   path = path.endsWith('/') ? path.slice(0, -1) : path;
-  if (path.split('/').length === 2) {
+  const parts = path.split('/');
+  let user, repo, ref;
+  if (parts.length === 2) {
     // assume main as default branch if none set
-    path += '/main';
+    [user, repo] = parts;
+    ref = 'main';
+  } else {
+    [user, repo, ref] = parts;
   }
-  return `https://raw.githubusercontent.com/${path}/${subpath}`;
+  // Route through the jsDelivr CDN mirror instead of raw.githubusercontent.com.
+  // raw.* is origin-only (no CDN) and is throttled / frequently unreachable on
+  // many networks (notably mainland China), which made every sample manifest and
+  // .wav buffer load slowly. jsDelivr edge-caches the same GitHub files and is
+  // far faster + more reachable. Format: cdn.jsdelivr.net/gh/user/repo@ref/path
+  return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${ref}/${subpath}`;
 }
 
 export const processSampleMap = (sampleMap, fn, baseUrl = sampleMap._base || '') => {

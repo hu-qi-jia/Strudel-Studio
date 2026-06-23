@@ -1,207 +1,17 @@
 import { tool, jsonSchema } from 'ai';
 import { undo as cmUndo } from '@codemirror/commands';
+import { renderPatternToBuffer, initAudio } from '@strudel/webaudio';
+import { settingsMap } from '../../settings.mjs';
 import { soundRegistry } from './SoundRegistry.mjs';
-
-// Methods that don't exist in Strudel and cause "is not defined" errors
-const INVALID_METHODS = {
-  reverb: 'Use .room(0.7).size(0.8) for reverb',
-  echo: 'Use .delay(0.5).delaytime(0.25).delayfeedback(0.7) for delay/echo',
-  chorus: 'Not available in Strudel',
-  flanger: 'Not available in Strudel',
-  flange: 'Not available in Strudel',
-  phaser: 'Use .phaser(0.5) as a parameter, not as a method chain',
-  compressor: 'Use .compressor(0.5) as a parameter, not as a method chain',
-  limiter: 'Not available in Strudel',
-  wah: 'Not available in Strudel',
-  eq: 'Not available in Strudel',
-  distortion: 'Use .distort(0.5) instead',
-  bitcrusher: 'Use .crush(8) for bit crushing',
-  pitchShift: 'Use .fshift(100) for frequency shifting',
-};
-
-// Standalone functions that don't exist in Strudel
-const INVALID_FUNCTIONS = {
-  func: 'Not a Strudel function',
-  play: 'Use execute_code tool to play, or just write the pattern',
-  melody: 'Use note("c3 e3 g3") for melody',
-  synth: 'Use .s("superpiano"), .s("sawtooth"), .s("supersaw") etc.',
-  beat: 'Use s("bd sd hh oh") for drum beats',
-  rhythm: 'Use s("bd sd hh oh") for rhythm patterns',
-  pattern: 'Use s("bd sd") or note("c3 e3") to start a pattern',
-  setcps: 'Use setcpm() instead (cycles per minute)',
-};
-
-// 危险 API 黑名单：agent 生成的代码经 editor.evaluate() 在页面 origin 内执行，
-// 而 origin 里存着 API key。若不拦截，提示注入可诱导 LLM 产出
-// fetch(localStorage.getItem('agent-model-apiKey')) 之类的外泄/执行代码。
-// 这些标识符在合法 Strudel pattern 代码中几乎不会出现，故直接拒绝写入。
-const DANGEROUS_PATTERNS = [
-  { re: /\bfetch\s*\(/, label: 'fetch()' },
-  { re: /\bXMLHttpRequest\b/, label: 'XMLHttpRequest' },
-  { re: /\bWebSocket\b/, label: 'WebSocket' },
-  { re: /\bsendBeacon\b/, label: 'sendBeacon' },
-  { re: /\bEventSource\b/, label: 'EventSource' },
-  { re: /\bnew\s+Worker\b/, label: 'new Worker()' },
-  { re: /\bimportScripts\b/, label: 'importScripts' },
-  { re: /\blocalStorage\b/, label: 'localStorage' },
-  { re: /\bsessionStorage\b/, label: 'sessionStorage' },
-  { re: /\bdocument\.cookie\b/, label: 'document.cookie' },
-  { re: /\bindexedDB\b/, label: 'indexedDB' },
-  { re: /\beval\s*\(/, label: 'eval()' },
-  { re: /\bnew\s+Function\b/, label: 'new Function()' },
-  { re: /\bimport\s*\(/, label: 'dynamic import()' },
-];
-
-// ─── 代码静态检查辅助：剥离注释与字符串 ──────────────────────
-
-// 只剥离 // 与 /* */ 注释，保留字符串字面量（字符串相关检查需要它们）
-function stripComments(code) {
-  let out = '';
-  let i = 0;
-  const n = code.length;
-  while (i < n) {
-    const c = code[i];
-    const next = code[i + 1];
-    if (c === '/' && next === '/') {
-      while (i < n && code[i] !== '\n') i++;
-    } else if (c === '/' && next === '*') {
-      i += 2;
-      while (i < n && !(code[i] === '*' && code[i + 1] === '/')) {
-        if (code[i] === '\n') out += '\n';
-        i++;
-      }
-      i += 2;
-    } else if (c === '"' || c === "'" || c === '`') {
-      const quote = c;
-      out += c;
-      i++;
-      while (i < n && code[i] !== quote) {
-        if (code[i] === '\\' && i + 1 < n) {
-          out += code[i] + code[i + 1];
-          i += 2;
-          continue;
-        }
-        out += code[i];
-        i++;
-      }
-      if (i < n) {
-        out += code[i];
-        i++;
-      }
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
-}
-
-// 在已剥离注释的代码上，再把字符串字面量替换为等长空格（保留换行），
-// 用于方法/函数名黑名单匹配，避免 mini-notation 字符串内容造成误报。
-function stripStrings(code) {
-  let out = '';
-  let i = 0;
-  const n = code.length;
-  while (i < n) {
-    const c = code[i];
-    if (c === '"' || c === "'" || c === '`') {
-      const quote = c;
-      out += ' ';
-      i++;
-      while (i < n && code[i] !== quote) {
-        if (code[i] === '\\' && i + 1 < n) {
-          out += '  ';
-          i += 2;
-          continue;
-        }
-        out += code[i] === '\n' ? '\n' : ' ';
-        i++;
-      }
-      if (i < n) {
-        out += ' ';
-        i++;
-      }
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
-}
-
-function validateCode(code) {
-  const warnings = [];
-
-  // 方法/函数黑名单检查：在「无注释、无字符串」的代码上匹配，
-  // 避免注释或 mini-notation 字符串里出现的方法名造成误报。
-  const codeForNameCheck = stripStrings(stripComments(code));
-
-  for (const [method, hint] of Object.entries(INVALID_METHODS)) {
-    const regex = new RegExp(`\\.${method}\\s*\\(`, 'i');
-    if (regex.test(codeForNameCheck)) {
-      warnings.push(`.${method}() does not exist in Strudel — ${hint}`);
-    }
-  }
-  for (const [name, hint] of Object.entries(INVALID_FUNCTIONS)) {
-    const regex = new RegExp(`(?<!\\.)\\b${name}\\s*\\(`, 'i');
-    if (regex.test(codeForNameCheck)) {
-      warnings.push(`${name}() is not a Strudel function — ${hint}`);
-    }
-  }
-
-  // 数组传参与多行字符串检查在「仅去注释」的代码上进行（需要保留字符串结构）
-  const noComments = stripComments(code);
-  // 危险 API 扫描：在去注释、保留字符串的代码上匹配。注释里的危险词不误报，
-  // 但 eval/Function 等执行原语，以及字符串内的外泄调用仍能被捕获。
-  for (const { re, label } of DANGEROUS_PATTERNS) {
-    if (re.test(noComments)) {
-      warnings.push(
-        `${label} is blocked in agent-generated code for security (prevents a crafted tool result from exfiltrating data or running arbitrary code). This is a hard rule — rewrite the pattern without it.`,
-      );
-    }
-  }
-  if (/\bnote\s*\(\s*\[\s*/.test(noComments)) {
-    warnings.push('note() expects a mini notation string like note("c3 e3 g3"), not an array');
-  }
-  if (/\bs\s*\(\s*\[\s*/.test(noComments)) {
-    warnings.push('s() expects a mini notation string like s("bd sd hh"), not an array');
-  }
-
-  // 多顶层 pattern 检查（仅去注释）
-  const topLevelPatterns = noComments.split('\n').filter(
-    (line) => line.trim() && !line.trim().startsWith('$:') && !line.trim().startsWith('_$:'),
-  );
-  const patternStarts = topLevelPatterns.filter((line) =>
-    /^\s*(note|s|n|freq|stack|cat|sequence|seq|slowcat|fastcat)\s*\(/.test(line),
-  );
-  if (patternStarts.length > 1) {
-    warnings.push(
-      'Multiple top-level patterns detected without $: prefix — only the LAST pattern will play. Use $: before each pattern to play them simultaneously.',
-    );
-  }
-
-  // 多行字符串字面量检查（需要字符串，用仅去注释的代码）
-  const lines = noComments.split('\n');
-  let inString = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const quoteCount = (line.match(/(?<!\\)"/g) || []).length;
-    if (inString) {
-      if (quoteCount > 0 && quoteCount % 2 === 1) {
-        inString = false;
-      } else if (quoteCount % 2 === 0) {
-        warnings.push(
-          `Line ${i + 1}: Multi-line string literals are not valid in JavaScript. Keep all strings on a single line.`,
-        );
-        break;
-      }
-    } else if (quoteCount % 2 === 1) {
-      inString = true;
-    }
-  }
-
-  return warnings;
-}
+// 代码静态护栏（危险 API 黑名单 + emoji 剥离 + 语法检查）已抽到纯模块 codeGuard.mjs，
+// 独立于 editor / AI SDK / audio 图，便于用普通 node 单测覆盖各类绕过手法。详见 codeGuard.mjs。
+import { validateCode, stripEmojis } from './codeGuard.mjs';
+// 自我评估回路（agent 的「耳朵」）：编排静态打分 + 渲染后 DSP，均纯模块、可 node 单测。
+import { analyzeArrangement } from './arrangementCheck.mjs';
+import { analyzeRenderedAudio } from './audioAnalysis.mjs';
+// 工具超时配置 + withTimeout 包装器：网络/CPU 密集型工具卡住时返回错误消息而非中断流。
+import { TOOL_TIMEOUTS } from './config.mjs';
+import { withTimeout } from './utils.mjs';
 
 const noParams = jsonSchema({ type: 'object', properties: {}, required: [] });
 
@@ -222,33 +32,47 @@ function readEngineError(editor) {
  * Create AI SDK tools bound to an editor instance.
  *
  * 设计要点（Cursor/Trae 形态）：
- * - 编辑类工具（write_code/edit_lines/insert_code/replace_code）写入后自动播放并
- *   用引擎真实反馈校验，失败则返回错误让模型自纠正，而非依赖正则黑名单。
- * - preview_sound 不再破坏用户代码：试听前保存原代码，restore_code 或下次写入时自动恢复。
+ * - 编辑类工具（write_code/edit_lines）写入后自动播放并用引擎真实反馈校验，
+ *   失败则返回错误让模型自纠正，而非依赖正则黑名单。
+ * - 这些工具返回结构化对象 { ok, playing, message }：useAgent 取 message 作为给模型/UI
+ *   展示的字符串，取 playing 作为护栏（Guardrail.turnProducedPlayingCode）判定「本轮是否
+ *   产出可播放代码」的依据——不依赖英文措辞，改文案不会让护栏失效。
+ * - 单一写入口：只有 write_code / edit_lines 会改动编辑器代码。试听某个音色？
+ *   直接 write_code（自动播放校验），undo 回退——不再有「预览覆盖用户代码」的
+ *   save/restore 状态机（那是为擦自己屁股而生的补丁）。
  */
-export function createTools(editorRef) {
-  // 预览状态：savedCode !== null 表示编辑器当前是试听代码，原代码保存在此
-  let savedCode = null;
-
+export function createTools(editorRef, opts = {}) {
   const getEditor = () => editorRef.current;
+  // 确认回调（human-in-the-loop）：write_code 全量替换 / analyze_pattern_audio 中断播放前，
+  // 若 opts.requestApproval 存在则 await 用户批准。返回 true 继续，false 取消。
+  // useAgent 提供实现：设置 pendingApproval state，AgentSidebar 渲染 diff 预览 + 批准/拒绝。
+  const requestApproval = opts.requestApproval;
 
-  // 若处于试听态，先静默恢复用户真实代码（不播放），返回是否发生了恢复
-  const clearPreviewIfActive = () => {
-    if (savedCode !== null) {
-      const editor = getEditor();
-      if (editor) editor.setCode(savedCode);
-      savedCode = null;
-      return true;
-    }
-    return false;
-  };
-
-  // 读取当前真实代码（试听态下返回保存的原代码，而非试听代码）
+  // 读取当前真实代码（供 read_code / analyze_arrangement 用）
   const readCurrentCode = () => {
     const editor = getEditor();
     if (!editor) return '';
-    if (savedCode !== null) return savedCode;
     return editor.editor.state.doc.toString();
+  };
+
+  // analyze_pattern_audio 渲染后恢复实时音频路径：镜像 handleExport 的 finally —— 离线渲染把全局
+  // context 换成了 OfflineAudioContext，worklet 缓存还指向它；必须重新 initAudio 武装回
+  // live context，否则后续播放静音。再停调度器待命（与 handleExport 收尾一致）。
+  const restoreLiveAudio = async (settings) => {
+    try {
+      await initAudio({
+        maxPolyphony: settings.maxPolyphony,
+        audioDeviceName: settings.audioDeviceName,
+        multiChannelOrbits: settings.multiChannelOrbits,
+      });
+    } catch (e) {
+      console.warn('[analyze_pattern_audio] failed to restore live audio context:', e);
+    }
+    try {
+      getEditor()?.repl?.scheduler?.stop();
+    } catch {
+      /* best-effort：调度器停止失败不阻断恢复流程 */
+    }
   };
 
   return {
@@ -267,20 +91,35 @@ export function createTools(editorRef) {
 
     write_code: tool({
       description:
-        'Replace ALL code in the editor with new code, then automatically play it and validate against the real engine. This is the PRIMARY tool for creating or fully rewriting a pattern. Returns engine errors if the code fails (the previous pattern keeps playing in that case). Only use valid Strudel methods — never .reverb() (use .room().size()), .echo() (use .delay()), .chorus(), .flanger(), .limiter(), .wah(), .eq(). Always use mini notation strings, never arrays.',
+        'Replace ALL code in the editor with new code, then automatically play it and validate against the real engine. This is the PRIMARY tool for creating or fully rewriting a pattern. Returns engine errors if the code fails (the previous pattern keeps playing in that case). To preview an unfamiliar sound, just write_code a short pattern with it and call undo to revert — there is no separate preview tool. Only use valid Strudel methods — never .reverb() (use .room().size()), .echo() (use .delay()), .chorus(), .flanger(), .limiter(), .wah(), .eq(). Always use mini notation strings, never arrays.',
       inputSchema: jsonSchema({
         type: 'object',
         properties: { code: codeParam },
         required: ['code'],
       }),
-      execute: async ({ code }) => {
+      execute: async ({ code: rawCode }) => {
+        const code = stripEmojis(rawCode);
         const warnings = validateCode(code);
         if (warnings.length > 0) {
-          return `Code validation failed (not written):\n${warnings.join('\n')}\n\nFix these and retry.`;
+          // 结构化返回：ok=false, playing=false。护栏据此判定「这轮没产出可播放代码」。
+          return { ok: false, playing: false, message: `Code validation failed (not written):\n${warnings.join('\n')}\n\nFix these and retry.` };
         }
         const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        clearPreviewIfActive(); // 试听态下写入：先恢复真实代码再整体替换
+        if (!editor) return { ok: false, playing: false, message: 'Editor not available' };
+        // p2 human-in-the-loop：全量替换前让用户预览 diff 并确认。
+        // 避免用户 30 分钟调的 pattern 被 agent 一句"加 reverb"全量重写丢失。
+        if (requestApproval) {
+          const oldCode = readCurrentCode();
+          const approved = await requestApproval({
+            tool: 'write_code',
+            oldCode,
+            newCode: code,
+            summary: 'Replace ALL code in the editor',
+          });
+          if (!approved) {
+            return { ok: false, playing: false, message: 'User declined the full code replacement. Ask the user how they would like to proceed, or use edit_lines for a targeted change instead.' };
+          }
+        }
         editor.setCode(code);
         try {
           await editor.evaluate(); // 写入后立即播放
@@ -289,9 +128,9 @@ export function createTools(editorRef) {
         }
         const err = readEngineError(editor);
         if (err) {
-          return `Code was written but produced an error and was NOT played (the previous pattern continues):\n${err.message || err}\n\nFix the code and call write_code again.`;
+          return { ok: false, playing: false, message: `Code was written but produced an error and was NOT played (the previous pattern continues):\n${err.message || err}\n\nFix the code and call write_code again.` };
         }
-        return 'Code applied successfully and is now playing. Briefly tell the user what you changed.';
+        return { ok: true, playing: true, message: 'Code applied successfully and is now playing. Briefly tell the user what you changed.' };
       },
     }),
 
@@ -317,26 +156,26 @@ export function createTools(editorRef) {
           start_line < 1 ||
           end_line < start_line
         ) {
-          return 'Error: start_line and end_line must be positive integers with end_line >= start_line.';
+          return { ok: false, playing: false, message: 'Error: start_line and end_line must be positive integers with end_line >= start_line.' };
         }
-        const warnings = validateCode(new_code);
+        const code = stripEmojis(new_code);
+        const warnings = validateCode(code);
         if (warnings.length > 0) {
-          return `Code validation failed (not applied):\n${warnings.join('\n')}`;
+          return { ok: false, playing: false, message: `Code validation failed (not applied):\n${warnings.join('\n')}` };
         }
         const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        clearPreviewIfActive();
+        if (!editor) return { ok: false, playing: false, message: 'Editor not available' };
         const doc = editor.editor.state.doc;
         const total = doc.lines;
         if (start_line > total) {
-          return `Error: start_line ${start_line} is beyond the end of the file (file has ${total} lines). Call read_code to see current line numbers.`;
+          return { ok: false, playing: false, message: `Error: start_line ${start_line} is beyond the end of the file (file has ${total} lines). Call read_code to see current line numbers.` };
         }
         const safeEnd = Math.min(end_line, total);
         const fromLine = doc.line(start_line);
         const toLine = doc.line(safeEnd);
         const oldText = doc.sliceString(fromLine.from, toLine.to);
         editor.editor.dispatch({
-          changes: { from: fromLine.from, to: toLine.to, insert: new_code },
+          changes: { from: fromLine.from, to: toLine.to, insert: code },
         });
         try {
           await editor.evaluate();
@@ -345,161 +184,11 @@ export function createTools(editorRef) {
         }
         const err = readEngineError(editor);
         const before = oldText.split('\n').map((l) => `- ${l}`).join('\n');
-        const after = (new_code || '(deleted)').split('\n').map((l) => `+ ${l}`).join('\n');
+        const after = (code || '(deleted)').split('\n').map((l) => `+ ${l}`).join('\n');
         if (err) {
-          return `Lines ${start_line}-${safeEnd} edited but produced an error (NOT played):\n${err.message || err}\n\nChanged:\n${before}\n${after}\n\nCall undo to revert, or fix and edit again.`;
+          return { ok: false, playing: false, message: `Lines ${start_line}-${safeEnd} edited but produced an error (NOT played):\n${err.message || err}\n\nChanged:\n${before}\n${after}\n\nCall undo to revert, or fix and edit again.` };
         }
-        return `Edited lines ${start_line}-${safeEnd} (now playing):\n${before}\n${after}`;
-      },
-    }),
-
-    insert_code: tool({
-      description:
-        'Insert code at a semantic anchor point. Prefer this over raw character offsets. Use after_line / before_line (1-based) or after_text / before_text (exact text match) for precise placement; beginning / end for file edges. Plays and validates after inserting.',
-      inputSchema: jsonSchema({
-        type: 'object',
-        properties: {
-          anchor: {
-            type: 'string',
-            enum: ['beginning', 'end', 'after_line', 'before_line', 'after_text', 'before_text'],
-            description: 'Where to insert',
-          },
-          line: { type: 'number', description: '1-based line number (for after_line / before_line)' },
-          text: { type: 'string', description: 'Exact anchor text currently in the editor (for after_text / before_text)' },
-          code: codeParam,
-        },
-        required: ['anchor', 'code'],
-      }),
-      execute: async ({ anchor, line, text, code }) => {
-        const warnings = validateCode(code);
-        if (warnings.length > 0) {
-          return `Code validation failed (not inserted):\n${warnings.join('\n')}`;
-        }
-        const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        clearPreviewIfActive();
-        const doc = editor.editor.state.doc;
-        const full = doc.toString();
-        let pos;
-        switch (anchor) {
-          case 'beginning':
-            pos = 0;
-            break;
-          case 'end':
-            pos = full.length;
-            break;
-          case 'after_line': {
-            if (!Number.isInteger(line) || line < 1 || line > doc.lines) {
-              return `Error: line ${line} is out of range (file has ${doc.lines} lines).`;
-            }
-            pos = doc.line(line).to;
-            break;
-          }
-          case 'before_line': {
-            if (!Number.isInteger(line) || line < 1 || line > doc.lines) {
-              return `Error: line ${line} is out of range (file has ${doc.lines} lines).`;
-            }
-            pos = doc.line(line).from;
-            break;
-          }
-          case 'after_text': {
-            const idx = full.indexOf(text);
-            if (idx === -1) return `Error: anchor text not found. Provide the exact text currently in the editor (call read_code if unsure).`;
-            pos = idx + text.length;
-            break;
-          }
-          case 'before_text': {
-            const idx = full.indexOf(text);
-            if (idx === -1) return `Error: anchor text not found. Provide the exact text currently in the editor (call read_code if unsure).`;
-            pos = idx;
-            break;
-          }
-          default:
-            return `Error: unknown anchor "${anchor}".`;
-        }
-        // 自动补换行，保证插入的代码独立成行
-        let insert = code;
-        if (pos > 0 && full[pos - 1] !== '\n') insert = '\n' + insert;
-        if (pos < full.length && full[pos] !== '\n') insert = insert + '\n';
-        editor.editor.dispatch({ changes: { from: pos, to: pos, insert } });
-        try {
-          await editor.evaluate();
-        } catch {
-          /* ignored: evaluate 内部已捕获错误并写入 repl.state */
-        }
-        const err = readEngineError(editor);
-        if (err) {
-          return `Code inserted at ${anchor} but produced an error (NOT played):\n${err.message || err}`;
-        }
-        return `Code inserted at ${anchor} and is now playing.`;
-      },
-    }),
-
-    replace_code: tool({
-      description:
-        'Replace an exact text occurrence with new code, then play and validate. Prefer find_text (reliable) over character offsets. Good for swapping a single token or phrase.',
-      inputSchema: jsonSchema({
-        type: 'object',
-        properties: {
-          from: { type: 'number', description: 'Start character position (alternative to find_text)' },
-          to: { type: 'number', description: 'End character position (alternative to find_text)' },
-          find_text: { type: 'string', description: 'The exact text to find and replace (preferred over from/to)' },
-          code: codeParam,
-        },
-        required: ['code'],
-      }),
-      execute: async ({ from, to, find_text, code }) => {
-        const warnings = validateCode(code);
-        if (warnings.length > 0) {
-          return `Code validation failed (not applied):\n${warnings.join('\n')}`;
-        }
-        const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        clearPreviewIfActive();
-        if (find_text) {
-          const doc = editor.editor.state.doc.toString();
-          const index = doc.indexOf(find_text);
-          if (index === -1) {
-            return `Error: Could not find the text "${find_text}" in the editor. Provide the exact current text (call read_code if unsure).`;
-          }
-          editor.editor.dispatch({
-            changes: { from: index, to: index + find_text.length, insert: code },
-          });
-        } else {
-          if (from === undefined || to === undefined) {
-            return 'Error: Either provide find_text or both from and to parameters.';
-          }
-          editor.editor.dispatch({ changes: { from, to, insert: code } });
-        }
-        try {
-          await editor.evaluate();
-        } catch {
-          /* ignored: evaluate 内部已捕获错误并写入 repl.state */
-        }
-        const err = readEngineError(editor);
-        if (err) {
-          return `Replace done but produced an error (NOT played):\n${err.message || err}`;
-        }
-        return 'Code replaced successfully and is now playing.';
-      },
-    }),
-
-    execute_code: tool({
-      description:
-        'Play the current code in the editor WITHOUT changing it. Use this to replay after manual edits, or when you only want to hear the current code. (write_code/edit_lines/insert_code/replace_code already play automatically.)',
-      inputSchema: noParams,
-      execute: async () => {
-        const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        clearPreviewIfActive();
-        try {
-          await editor.evaluate();
-        } catch {
-          /* ignored: evaluate 内部已捕获错误并写入 repl.state */
-        }
-        const err = readEngineError(editor);
-        if (err) return `Playback failed: ${err.message || err}`;
-        return 'Code is now playing.';
+        return { ok: true, playing: true, message: `Edited lines ${start_line}-${safeEnd} (now playing):\n${before}\n${after}` };
       },
     }),
 
@@ -516,26 +205,6 @@ export function createTools(editorRef) {
           // ignore
         }
         return 'Playback stopped';
-      },
-    }),
-
-    restore_code: tool({
-      description:
-        "Restore the user's original code after a preview_sound call, and play it. Call this when the user is done previewing sounds. (write_code/edit_lines/insert_code/replace_code auto-restore before applying real changes, so you usually do not need this.)",
-      inputSchema: noParams,
-      execute: async () => {
-        const editor = getEditor();
-        if (!editor) return 'Editor not available';
-        if (savedCode === null) return 'No preview is active — nothing to restore.';
-        const code = savedCode;
-        savedCode = null;
-        editor.setCode(code);
-        try {
-          await editor.evaluate();
-        } catch {
-          /* ignored: evaluate 内部已捕获错误并写入 repl.state */
-        }
-        return 'Original code restored and playing.';
       },
     }),
 
@@ -571,7 +240,7 @@ export function createTools(editorRef) {
     }),
 
     undo: tool({
-      description: 'Undo the last code modification in the editor. Use when a change was incorrect or the user wants to revert.',
+      description: 'Undo the last code modification in the editor. Use when a change was incorrect, the user wants to revert, or after previewing a sound with write_code.',
       inputSchema: noParams,
       execute: async () => {
         const editor = getEditor();
@@ -599,7 +268,7 @@ export function createTools(editorRef) {
       execute: async ({ category, type, tag, search }) => {
         const sounds = soundRegistry.query({ category, type, tag, search });
         if (sounds.length === 0) {
-          return 'No sounds found matching the criteria. Try a different search/category/tag, or call list_sounds without filters to see all.';
+          return { totalCount: 0, shownCount: 0, hasMore: false, message: 'No sounds found matching the criteria. Try a different search/category/tag, or call list_sounds without filters to see all.' };
         }
         // 截断过长的结果：一次返回上百个音色会撑爆上下文，让模型在
         // 「查到音色」后停滞（不再继续生成代码）。先给前若干个 + 总数，
@@ -612,12 +281,18 @@ export function createTools(editorRef) {
           if (s.sampleCount && s.sampleCount > 1) desc += ` (${s.sampleCount} samples)`;
           return desc;
         });
-        const header =
-          total > MAX
-            ? `Found ${total} sounds (showing first ${MAX} — narrow with category/type/tag/search for the rest):\n`
-            : `Found ${total} sounds:\n`;
+        const hasMore = total > MAX;
+        const header = hasMore
+          ? `Found ${total} sounds (showing first ${MAX} — narrow with category/type/tag/search for the rest):\n`
+          : `Found ${total} sounds:\n`;
         // 记住：list_sounds 只是「查询」，查询后必须接着 write_code 写出可播放的 pattern。
-        return `${header}${lines.join('\n')}\n\n(Discovery only — remember to follow up with write_code to actually make sound.)`;
+        // 结构化返回 totalCount/hasMore 让模型能判断是否需要细化过滤再查一次。
+        return {
+          totalCount: total,
+          shownCount: shown.length,
+          hasMore,
+          message: `${header}${lines.join('\n')}\n\n(Discovery only — remember to follow up with write_code to actually make sound.)`,
+        };
       },
     }),
 
@@ -660,49 +335,283 @@ export function createTools(editorRef) {
       },
     }),
 
-    preview_sound: tool({
+    // ─── 自我评估工具（agent 的「听觉反馈回路」）─────────────────
+    // 直接回应「让 agent 能评判自己作品的好坏」。两层互补：
+    //  analyze_arrangement —— 静态分析编排结构（零成本零风险，默认质量自检）
+    //  analyze_pattern_audio       —— 离线渲染 + DSP 测量（听物理问题，较重，编排合格后再用）
+    // 两者均返回 message（给模型/UI 的可读摘要）+ 结构化字段（findings 等）。
+    // 产物是「诊断」，不是代码；模型据此调 write_code/edit_lines 改进（单一写入口不变）。
+
+    analyze_arrangement: tool({
       description:
-        "Preview a sound by temporarily playing a short pattern. The user's current code is saved first and is NOT lost — call restore_code to bring it back, or just call write_code/edit_lines next (they auto-restore first). Use this to let the user hear a sound before committing.",
+        'Score the CURRENT editor code on arrangement quality (0-100) across 7 dimensions: layers (multi-track), velocity variation, stereo separation, space/reverb, MACRO FORM (sections over time — the biggest factor in a track feeling complete), parameter automation, and tempo. Returns which dimensions pass/fail with concrete Strudel fixes. This is an instant static code check — no audio is rendered, nothing is disturbed. Call it right after write_code and BEFORE you declare the track done; if the score is low or "form"/"layers" fail, improve the code using the suggestions and re-check. A flat single-track loop with no sections will score low and is NOT an acceptable finished track.',
+      inputSchema: noParams,
+      execute: async () => {
+        const code = readCurrentCode();
+        if (!code || !code.trim()) {
+          return {
+            ok: false,
+            score: 0,
+            message: 'Editor is empty — write some code first, then analyze_arrangement.',
+            findings: [],
+          };
+        }
+        const result = analyzeArrangement(code);
+        return { ok: true, message: result.summary, ...result };
+      },
+    }),
+
+    analyze_pattern_audio: tool({
+      description:
+        'Render the CURRENT pattern offline for a few cycles and run DSP analysis on the audio: clipping, loudness (peak/RMS), dynamics (crest factor), 3-band spectral balance (muddy low end / dull highs / honky mids), stereo width, and silence detection. This is your "ear" — it hears physical problems that static code analysis cannot: a dead sample that renders silent, a muddy boomy low end, or digital clipping. NOTE: it briefly interrupts live playback to render (a second or two), so use it AFTER the arrangement is solid (analyze_arrangement passes), not on every edit. Returns measurements + findings with fixes. If it reports SILENCE or CLIPPING, you MUST fix those before finishing.',
       inputSchema: jsonSchema({
         type: 'object',
-        properties: { soundName: { type: 'string' } },
-        required: ['soundName'],
+        properties: {
+          cycles: {
+            type: 'number',
+            description: 'How many cycles to render (default 4). More = slower but more representative. Keep 2-8.',
+          },
+        },
       }),
-      execute: async ({ soundName }) => {
-        const sound = soundRegistry.getSound(soundName);
-        if (!sound) {
-          return `Sound "${soundName}" not found. Use list_sounds to see available sounds.`;
-        }
+      execute: async ({ cycles } = {}) => {
         const editor = getEditor();
-        if (!editor) return 'Editor not available';
+        if (!editor) return { ok: false, message: 'Editor not available.' };
+        const repl = editor.repl;
+        if (!repl || !repl.scheduler) return { ok: false, message: 'Audio engine not ready.' };
+        const cy = Math.max(1, Math.min(16, Math.round(cycles) || 4));
+        const settings = settingsMap.get();
 
-        let previewCode;
-        if (sound.type === 'sample') {
-          if (sound.tag === 'drum-machines') {
-            previewCode = `s("bd sd [~ bd] sd,hh*8").bank("${sound.name}")`;
-          } else if (sound.sampleCount && sound.sampleCount > 1) {
-            previewCode = `s("${soundName}").n("0 1 2 3 4 5 6 7").slow(2)`;
-          } else {
-            previewCode = `s("${soundName}")`;
+        // p6 知情确认：analyze_pattern_audio 会中断实时播放 1-2 秒做离线渲染。
+        // live-coding 场景里中断播放是反用户体验，让用户知情同意。
+        if (requestApproval) {
+          const approved = await requestApproval({
+            tool: 'analyze_pattern_audio',
+            message: 'Audio analysis will briefly interrupt playback (1-2s) to render offline. Continue?',
+          });
+          if (!approved) {
+            return { ok: false, message: 'User declined audio analysis (would interrupt playback). Skip analyze_pattern_audio and proceed with the arrangement check only.' };
           }
-        } else if (sound.type === 'soundfont' || sound.type === 'synth') {
-          previewCode = `note("c3 e3 g3 c4").s("${soundName}").room(0.3)`;
-        } else {
-          previewCode = `s("${soundName}")`;
         }
 
-        // 仅在非预览态时保存当前代码（避免连续 preview 丢失原始代码）
-        if (savedCode === null) {
-          savedCode = editor.editor.state.doc.toString();
-        }
-        editor.setCode(previewCode);
-        try {
-          await editor.evaluate();
-        } catch {
-          /* ignored: evaluate 内部已捕获错误并写入 repl.state */
-        }
-        return `Previewing: ${soundName}\nCode: ${previewCode}\n\nThe user's previous code is saved. Call restore_code to restore it, or call write_code/edit_lines to apply real changes (they auto-restore first).`;
+        // 镜像 handleExport 的安全编排：渲染期间绝不让实时调度器触发 getTrigger（会与
+        // context 临时切换竞态 → "Failed to fetch"）。先停调度器，再用 autostart=false 刷新 pattern。
+        // 渲染 + DSP 包在 withTimeout 里——离线渲染复杂 pattern 可能很慢，超时返回错误让模型自纠正。
+        return withTimeout(
+          async () => {
+            try {
+              repl.scheduler.stop();
+            } catch {
+              /* best-effort：渲染前停调度器，失败不阻断 */
+            }
+            let pattern;
+            try {
+              await repl.evaluate(editor.code, false); // evaluate() 无参会 autostart，重引入竞态
+              repl.scheduler.stop();
+              pattern = repl.state && repl.state.pattern;
+            } catch (e) {
+              await restoreLiveAudio(settings);
+              return { ok: false, message: `Could not evaluate pattern: ${e?.message || e}` };
+            }
+            if (!pattern) {
+              await restoreLiveAudio(settings);
+              return { ok: false, message: 'No pattern to analyze — write/play some code first.' };
+            }
+            const cps = repl.scheduler.cps;
+            if (!cps || !isFinite(cps) || cps <= 0) {
+              await restoreLiveAudio(settings);
+              return { ok: false, message: 'Could not determine a valid cps.' };
+            }
+
+            // 离线渲染（renderPatternToBuffer 内部安全 swap+恢复全局 context；lower SR = 更快）
+            const sampleRate = 22050;
+            let buffer;
+            try {
+              buffer = await renderPatternToBuffer(
+                pattern,
+                cps,
+                0,
+                cy,
+                sampleRate,
+                settings.maxPolyphony || 1024,
+                settings.multiChannelOrbits === true,
+              );
+            } catch (e) {
+              await restoreLiveAudio(settings);
+              return {
+                ok: false,
+                message: `Audio render failed: ${e?.message || e}. A sound may have failed to load — check the sounds with write_code + undo.`,
+              };
+            }
+            // 恢复实时音频路径（重武装 live context 的 worklet 缓存）
+            await restoreLiveAudio(settings);
+
+            // 取声道 → DSP
+            const channels = [];
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+            const analysis = analyzeRenderedAudio(channels, buffer.sampleRate);
+
+            // 分析期间停掉了调度器；分析完恢复播放，避免把用户留在静音状态。
+            // editor.evaluate() 内部 repl.evaluate(this.code) 默认 autostart → 重新起播。
+            try {
+              await editor.evaluate();
+            } catch {
+              /* 恢复播放：evaluate 内部已捕获错误，此处忽略 */
+            }
+
+            return { ok: true, cyclesRendered: cy, message: analysis.summary, ...analysis };
+          },
+          TOOL_TIMEOUTS.analyze_pattern_audio,
+          { ok: false, message: `Audio analysis timed out after ${TOOL_TIMEOUTS.analyze_pattern_audio / 1000}s. The pattern may be too complex — try fewer cycles or simplify the pattern.` },
+        );
+      },
+    }),
+    // ─── 社区曲目工具 ─────────────────────────────────────────
+
+    browse_repo: tool({
+      description:
+        'Browse a GitHub repository to discover Strudel example songs and patterns. Lists files in the repo (focused on .js files). Use this to find example tracks from repos like "terryds/awesome-strudel" or "eefano/strudel-songs-collection", then call fetch_example to read a specific file. Returns file names, paths, and sizes.',
+      inputSchema: jsonSchema({
+        type: 'object',
+        properties: {
+          repo: {
+            type: 'string',
+            description: 'GitHub repo in "owner/repo" format (e.g. "eefano/strudel-songs-collection") or full URL.',
+          },
+          branch: {
+            type: 'string',
+            description: 'Branch name (defaults to "main")',
+          },
+          path: {
+            type: 'string',
+            description: 'Optional subdirectory path to list (e.g. "functions" or "tinkering")',
+          },
+        },
+        required: ['repo'],
+      }),
+      execute: async ({ repo, branch = 'main', path = '' }) => {
+        return withTimeout(
+          async () => {
+            // Normalize repo input: accept "owner/repo", full URL, or "github:owner/repo"
+            let ownerRepo = repo.replace(/^https?:\/\/github\.com\//, '').replace(/^github:/, '').replace(/\.git$/, '').replace(/\/$/, '');
+            const apiUrl = `https://api.github.com/repos/${ownerRepo}/git/trees/${branch}?recursive=1`;
+            try {
+              const resp = await fetch(apiUrl);
+              if (!resp.ok) {
+                // Try 'master' branch as fallback
+                if (branch === 'main') {
+                  const fallback = await fetch(`https://api.github.com/repos/${ownerRepo}/git/trees/master?recursive=1`);
+                  if (fallback.ok) {
+                    const data = await fallback.json();
+                    return formatRepoTree(data, ownerRepo, path);
+                  }
+                }
+                return `Failed to browse repo "${ownerRepo}" (HTTP ${resp.status}). Check the repo name and branch. Use the format "owner/repo".`;
+              }
+              const data = await resp.json();
+              return formatRepoTree(data, ownerRepo, path);
+            } catch (e) {
+              return `Network error browsing "${ownerRepo}": ${e.message}. The GitHub API may be rate-limited or blocked. Try again later or ask the user to check network connectivity.`;
+            }
+          },
+          TOOL_TIMEOUTS.browse_repo,
+          `Timed out browsing repo "${repo}" after ${TOOL_TIMEOUTS.browse_repo / 1000}s. The GitHub API may be slow or blocked. Try again or ask the user to check network connectivity.`,
+        );
+      },
+    }),
+
+    fetch_example: tool({
+      description:
+        'Fetch the content of a specific file from a GitHub repository. Use after browse_repo to read a song\'s code. The file content can then be adapted and loaded into the editor with write_code. Supports .js, .mjs, .md, and .json files.',
+      inputSchema: jsonSchema({
+        type: 'object',
+        properties: {
+          repo: {
+            type: 'string',
+            description: 'GitHub repo in "owner/repo" format (e.g. "eefano/strudel-songs-collection")',
+          },
+          path: {
+            type: 'string',
+            description: 'File path within the repo (e.g. "strangerthings.js" or "functions/markovchain.js")',
+          },
+          branch: {
+            type: 'string',
+            description: 'Branch name (defaults to "main")',
+          },
+        },
+        required: ['repo', 'path'],
+      }),
+      execute: async ({ repo, path: filePath, branch = 'main' }) => {
+        return withTimeout(
+          async () => {
+            let ownerRepo = repo.replace(/^https?:\/\/github\.com\//, '').replace(/^github:/, '').replace(/\.git$/, '').replace(/\/$/, '');
+            // Try main, then master as fallback
+            const urls = [
+              `https://raw.githubusercontent.com/${ownerRepo}/${branch}/${filePath}`,
+            ];
+            if (branch === 'main') {
+              urls.push(`https://raw.githubusercontent.com/${ownerRepo}/master/${filePath}`);
+            }
+            for (const url of urls) {
+              try {
+                const resp = await fetch(url);
+                if (resp.ok) {
+                  const text = await resp.text();
+                  // Truncate very long files to avoid context overflow
+                  const MAX = 8000;
+                  if (text.length > MAX) {
+                    return `${text.slice(0, MAX)}\n\n// ... (truncated, file has ${text.length} chars total)`;
+                  }
+                  return text;
+                }
+              } catch {
+                // try next URL
+              }
+            }
+            return `Could not fetch "${filePath}" from "${ownerRepo}" (tried ${branch} and master branches). Use browse_repo to verify the file path exists.`;
+          },
+          TOOL_TIMEOUTS.fetch_example,
+          `Timed out fetching "${filePath}" from "${repo}" after ${TOOL_TIMEOUTS.fetch_example / 1000}s. Try again or use browse_repo to verify the file path.`,
+        );
       },
     }),
   };
+}
+
+// Format GitHub API tree response into a concise file listing
+function formatRepoTree(data, ownerRepo, filterPath) {
+  if (!data.tree || !Array.isArray(data.tree)) {
+    return `No files found in "${ownerRepo}".`;
+  }
+  // Filter: only .js/.mjs/.md/.json files, optionally by subdirectory
+  let files = data.tree.filter((item) => {
+    if (item.type !== 'blob') return false;
+    const ext = item.path.split('.').pop();
+    if (!['js', 'mjs', 'md', 'json'].includes(ext)) return false;
+    if (filterPath && !item.path.startsWith(filterPath + '/') && !item.path.startsWith(filterPath)) return false;
+    return true;
+  });
+  if (files.length === 0) {
+    return `No matching files found in "${ownerRepo}"${filterPath ? ` under "${filterPath}"` : ''}.`;
+  }
+  // Sort: .js first (most relevant), then by name
+  files.sort((a, b) => {
+    const aJs = a.path.endsWith('.js');
+    const bJs = b.path.endsWith('.js');
+    if (aJs !== bJs) return aJs ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+  const MAX = 80;
+  const total = files.length;
+  const shown = files.slice(0, MAX);
+  const lines = shown.map((f) => {
+    const size = f.size ? ` (${Math.round(f.size / 1024 * 10) / 10}KB)` : '';
+    return `  ${f.path}${size}`;
+  });
+  const header = total > MAX
+    ? `Repository: ${ownerRepo} — ${total} files (showing first ${MAX}):\n`
+    : `Repository: ${ownerRepo} — ${total} files:\n`;
+  const footer = total > MAX
+    ? `\n(showing first ${MAX} of ${total} — use the "path" parameter to filter by subdirectory)`
+    : '';
+  return `${header}${lines.join('\n')}${footer}\n\nUse fetch_example to read any file above, then adapt it with write_code.`;
 }

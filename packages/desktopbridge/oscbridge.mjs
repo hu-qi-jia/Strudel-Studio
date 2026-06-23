@@ -1,5 +1,5 @@
 import { Pattern, ClockCollator } from '@strudel/core';
-import { parseControlsFromHap } from 'node_modules/@strudel/osc/osc.mjs';
+import { parseControlsFromHap } from '@strudel/osc/osc.mjs';
 import { Invoke } from './utils.mjs';
 
 const collator = new ClockCollator({});

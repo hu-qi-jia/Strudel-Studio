@@ -7,6 +7,7 @@
 // 设计：消息只存纯 JSON 元数据（storage.mjs 深拷贝持久化需要），二进制与消息解耦。
 
 import { saveAttachment, loadAttachment, deleteAttachment } from './storage.mjs';
+import { MAX_ATTACHMENT_BYTES } from './config.mjs';
 
 // 本会话已注册附件的内存索引（reload 后失效，但消息自带元数据，UI 不依赖此表）
 const HANDLES = new Map();
@@ -14,10 +15,6 @@ const HANDLES = new Map();
 function newHandleId() {
   return 'att_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 }
-
-// 附件大小上限：防止超大文件撑爆内存/IDB，或让 decodeAudioData OOM/超时。
-// 50MB 足以覆盖常见 mp3/wav（120s 立体声 44.1k wav ≈ 20MB）。
-const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
 /** 注册一个文件，返回可序列化的元数据。超过 MAX_ATTACHMENT_BYTES 抛错（调用方应捕获提示）。 */
 export async function registerAttachment(file) {

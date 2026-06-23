@@ -1,26 +1,67 @@
 import { useState, useRef } from 'react';
+import { useStore } from '@nanostores/react';
 import cx from '@src/cx.mjs';
+import './agent.css';
 import { registerAttachment, removeAttachment } from '../../agent/attachments.mjs';
+import { $webSearchMode } from '../../agent/store.mjs';
 
-export function ChatInput({ onSend, disabled, onStop, chatInputActions = [] }) {
+// Monochrome (currentColor) icon — colored by theme/active state, no colored emoji.
+function GlobeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18" />
+      <path d="M12 3a14 14 0 0 0 0 18" />
+    </svg>
+  );
+}
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+const ACTION_ICONS = { add: PlusIcon };
+
+// Token compact display: 4200 → 4.2k
+function fmtTokens(n) {
+  const v = Number(n) || 0;
+  return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v);
+}
+
+export function ChatInput({
+  onSend,
+  disabled,
+  onStop,
+  chatInputActions = [],
+  tokenUsage,
+  contextTokens = 0,
+  contextBudget = 30000,
+  messageCount = 0,
+  onCompress,
+  isCompressing = false,
+}) {
   const [input, setInput] = useState('');
-  // 待发送附件的元数据（handleId/mime/name/size）；发送时随消息一起带出，随后清空。
   const [pendingAtts, setPendingAtts] = useState([]);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const pendingActionRef = useRef(null);
+  const webMode = useStore($webSearchMode);
+
+  // Streaming OR compressing: lock input to avoid interleaving with in-flight messagesRef writes
+  const blocked = disabled || isCompressing;
 
   const handleSubmit = (e) => {
     if (e) e.preventDefault();
-    // 允许：有文本 或 有待发附件
-    if (disabled) return;
+    if (blocked) return;
     if (!input.trim() && pendingAtts.length === 0) return;
     onSend(input.trim(), pendingAtts);
     setInput('');
     setPendingAtts([]);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const handleKeyDown = (e) => {
@@ -32,16 +73,22 @@ export function ChatInput({ onSend, disabled, onStop, chatInputActions = [] }) {
 
   const handleInput = (e) => {
     setInput(e.target.value);
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 60) + 'px';
+    // Add has-scroll class when content exceeds max-height
+    if (ta.scrollHeight > 60) {
+      ta.classList.add('has-scroll');
+    } else {
+      ta.classList.remove('has-scroll');
+    }
   };
 
   const openPicker = (action) => {
     pendingActionRef.current = action;
     if (fileInputRef.current) {
       fileInputRef.current.accept = action.accept || '';
-      fileInputRef.current.value = ''; // 允许重复选同一个文件
+      fileInputRef.current.value = '';
       fileInputRef.current.click();
     }
   };
@@ -65,122 +112,103 @@ export function ChatInput({ onSend, disabled, onStop, chatInputActions = [] }) {
   };
 
   const isStreaming = disabled;
-  // isStreaming === disabled，故 !disabled 已隐含 !isStreaming；不再重复。
-  const canSend = !disabled && (input.trim() || pendingAtts.length > 0);
+  const canSend = !blocked && (input.trim() || pendingAtts.length > 0);
+
+  // Context near budget: soft hint (irreversible operation not as permanent small link)
+  const ctxRatio = contextBudget > 0 ? contextTokens / contextBudget : 0;
+  const pct = contextBudget > 0 ? Math.round((contextTokens / contextBudget) * 100) : 0;
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-1 p-2 border-t"
-      style={{ borderColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)' }}
-    >
-      {/* 隐藏文件输入（由插件贡献的 chatInputAction 触发） */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        style={{ display: 'none' }}
-        onChange={handleFilesPicked}
-      />
+    <form className="agent-input" onSubmit={handleSubmit}>
+      <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFilesPicked} />
 
-      {/* 待发附件 chips */}
+      {/* Pending attachment chips (no emoji, text labels) */}
       {pendingAtts.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xs)' }}>
           {pendingAtts.map((a) => (
-            <span
-              key={a.handleId}
-              className={cx(
-                'inline-flex items-center gap-1 px-1.5 py-0.5 text-[var(--fs-hint)] border rounded-sm',
-              )}
-              style={{
-                borderColor: 'color-mix(in srgb, var(--foreground) 20%, transparent)',
-                backgroundColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)',
-              }}
-            >
-              <span>📎 {a.name}</span>
-              <button
-                type="button"
-                onClick={() => removePending(a.handleId)}
-                className="cursor-pointer hover:opacity-60"
-                style={{ lineHeight: 1 }}
-                title="remove"
-              >
-                ×
-              </button>
+            <span key={a.handleId} className="agent-attach">
+              <span className="agent-attach-name">{a.name}</span>
+              <button type="button" onClick={() => removePending(a.handleId)} className="agent-attach-x" title="remove">×</button>
             </span>
           ))}
         </div>
       )}
 
-      <div className="flex items-end gap-1.5">
-        {/* 插件贡献的上传按钮 */}
-        {chatInputActions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            onClick={() => openPicker(action)}
-            disabled={disabled}
-            title={action.label}
-            className={cx(
-              'px-1.5 py-1.5 text-[var(--fs-label)] border rounded-sm transition-colors',
-              disabled ? 'opacity-30 cursor-default' : 'cursor-pointer hover:opacity-80',
-            )}
-            style={{
-              borderColor: 'color-mix(in srgb, var(--foreground) 25%, transparent)',
-              backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
-            }}
-          >
-            {action.icon || '＋'}
-          </button>
-        ))}
-
+      {/* textarea only, full width */}
+      <div className="agent-input-row" style={{ alignItems: 'stretch' }}>
         <textarea
           ref={textareaRef}
+          className="agent-textarea"
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          disabled={disabled}
-          placeholder={disabled ? 'thinking...' : 'ask agent...'}
+          disabled={blocked}
+          placeholder={disabled ? 'thinking…' : 'ask agent…'}
           rows={1}
-          className={cx(
-            'flex-1 resize-none bg-transparent text-foreground text-[var(--fs-input)]',
-            'px-2 py-1.5 rounded-sm border outline-none',
-            'placeholder:text-foreground/30',
-          )}
-          style={{
-            borderColor: 'color-mix(in srgb, var(--foreground) 15%, transparent)',
-            maxHeight: '120px',
-            fontFamily: 'inherit',
-          }}
         />
-        {isStreaming ? (
+      </div>
+
+      {/* footer: left actions (web / attach) / right (ctx + send/stop) */}
+      <div className="agent-input-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="agent-toolrow">
           <button
             type="button"
-            onClick={onStop}
-            className="px-2 py-1.5 text-[var(--fs-label)] cursor-pointer border rounded-sm hover:opacity-80 transition-colors"
-            style={{
-              borderColor: 'color-mix(in srgb, var(--foreground) 25%, transparent)',
-              backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
-            }}
+            onClick={() => $webSearchMode.set(!webMode)}
+            disabled={blocked}
+            title={webMode ? 'Web mode on — click to turn off' : 'Web mode off — click to search online this turn'}
+            aria-pressed={webMode}
+            className="agent-icon-btn"
           >
-            stop
+            <GlobeIcon />
           </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            className={cx(
-              'px-2 py-1.5 text-[var(--fs-label)] border rounded-sm transition-colors',
-              !canSend && 'opacity-30 cursor-default',
-              canSend && 'cursor-pointer',
-            )}
-            style={{
-              borderColor: 'color-mix(in srgb, var(--foreground) 25%, transparent)',
-              backgroundColor: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
-            }}
-          >
-            send
-          </button>
-        )}
+          {chatInputActions.map((action) => {
+            const ActionIcon = action.icon && ACTION_ICONS[action.icon];
+            return (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => openPicker(action)}
+                disabled={blocked}
+                title={action.label}
+                className="agent-icon-btn"
+              >
+                {ActionIcon ? <ActionIcon /> : '+'}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+          {messageCount > 0 && (
+            <div className="agent-footer-stat">
+              <span
+                className={cx(ctxRatio > 0.85 && 'is-warn')}
+                title={`context: ${contextTokens} / ${contextBudget} tokens (${pct}%) · ${messageCount} messages${
+                  tokenUsage ? ` · last turn: ${tokenUsage.total} tokens (in ${tokenUsage.prompt}, out ${tokenUsage.completion})` : ''
+                }`}
+              >
+                {contextTokens}/{fmtTokens(contextBudget)} ({pct}%)
+              </span>
+            </div>
+          )}
+          {messageCount > 0 && (
+            <button
+              type="button"
+              onClick={onCompress}
+              disabled={blocked}
+              className="agent-btn"
+              title="Summarize older messages into a short note (keeps the last few turns verbatim)."
+            >
+              {isCompressing ? 'compressing…' : 'compress'}
+            </button>
+          )}
+          {/* send/stop button aligned to textarea right edge */}
+          {isStreaming ? (
+            <button type="button" className="agent-btn agent-btn--stop" onClick={onStop}>stop</button>
+          ) : (
+            <button type="submit" className="agent-btn" disabled={!canSend}>send</button>
+          )}
+        </div>
       </div>
     </form>
   );

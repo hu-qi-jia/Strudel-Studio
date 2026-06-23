@@ -1,0 +1,529 @@
+/* agent.css — agent panel design system.
+ *
+ * All tokens derive from theme CSS variables (written by @strudel/codemirror's activateTheme to :root:
+ * --foreground / --background / --caret / --lineHighlight / --lineBackground / --selection),
+ * so any CodeMirror theme switch will update the panel's appearance — no colors outside the theme palette.
+ *
+ * Design approach: maintain the app's monochrome "live-coding terminal" aesthetic.
+ *   - Text 4 levels (text / muted / faint / ghost) replace scattered 16 manual opacity values.
+ *   - Single accent = theme caret (each theme's built-in highlight color), for active/error states.
+ *   - Success/failure use glyphs (✓ / ✗) + opacity, not hardcoded red/green (avoids clashes with
+ *     green-text / sonic-pink / red-text themes).
+ *
+ * Style alignment: matches SoundsSidebar's pattern (bg-lineHighlight, Tailwind-like spacing).
+ */
+
+.agent-panel {
+  /* ── Surface layer (matches SoundsSidebar) ── */
+  --agent-surface: var(--lineHighlight);            /* Panel base — same as SoundsSidebar */
+  --agent-card: var(--background);                  /* Card / floating layer base */
+  --agent-card-strong: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --agent-border: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --agent-border-soft: color-mix(in srgb, var(--foreground) 8%, transparent);
+
+  /* ── Text layer (4 levels) ── */
+  --agent-text: var(--foreground);
+  --agent-muted: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --agent-faint: color-mix(in srgb, var(--foreground) 38%, transparent);
+  --agent-ghost: color-mix(in srgb, var(--foreground) 22%, transparent);
+
+  /* ── Accent (single accent) ── */
+  --agent-accent: var(--caret);
+  --agent-accent-soft: color-mix(in srgb, var(--caret) 16%, transparent);
+
+  display: flex;
+  flex-direction: row;
+  background: var(--agent-surface);
+  color: var(--agent-text);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--agent-border-soft);
+}
+
+/* ── Header (matches SoundsSidebar) ── */
+.agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;  /* matches SoundsSidebar: px-2 py-1.5 */
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--agent-border-soft);
+}
+.agent-title {
+  font-size: var(--fs-label);  /* matches SoundsSidebar */
+  font-weight: 500;  /* matches SoundsSidebar: font-medium */
+  color: var(--agent-text);
+  user-select: none;
+}
+.agent-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* Icon button (matches SoundsSidebar close button style) */
+.agent-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;  /* slightly larger for better touch target */
+  height: 28px;
+  border-radius: 0;
+  color: var(--agent-text);
+  background: transparent;
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+}
+.agent-icon-btn:hover {
+  opacity: 0.5;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.agent-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Text button (clear, etc.) */
+.agent-text-btn {
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.agent-text-btn:hover {
+  color: var(--agent-text);
+  background: var(--agent-card-strong);
+}
+
+/* ── Message scroll area ── */
+.agent-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-height: 0;
+}
+
+/* Empty state */
+.agent-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+  color: var(--agent-faint);
+}
+.agent-empty-hint {
+  font-size: var(--fs-label);
+  color: var(--agent-muted);
+}
+.agent-empty-examples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.agent-example {
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--agent-border-soft);
+  border-radius: 0;
+  cursor: pointer;
+  background: transparent;
+  text-align: left;
+  transition: color 0.12s, border-color 0.12s;
+}
+.agent-example:hover {
+  color: var(--agent-accent);
+  border-color: var(--agent-accent-soft);
+}
+
+/* ── Single message ── */
+.agent-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;  /* tight spacing between thinking blocks and summary text */
+  min-width: 0;
+}
+.agent-msg--user { align-items: flex-end; }
+.agent-msg--agent { align-items: flex-start; }
+.agent-role {
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  user-select: none;
+  text-transform: lowercase;
+}
+.agent-bubble {
+  /* User messages have bubble background; agent messages have no bubble, more like "spoken" */
+  max-width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 0;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.agent-msg--user .agent-bubble {
+  background: var(--agent-card-strong);
+  color: var(--agent-text);
+}
+.agent-msg--agent .agent-bubble {
+  background: transparent;
+  color: var(--agent-text);
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Inline code block in message body */
+.agent-code {
+  display: block;
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  font-size: var(--fs-label);
+  background: var(--agent-card-strong);
+  color: var(--agent-text);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 0;
+  margin: var(--space-xs) 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Collapsible thinking block ── */
+.agent-thinking {
+  font-size: var(--fs-input);
+  border: 1px solid var(--agent-border-soft);
+  border-radius: 0;
+  width: 100%;
+  background: transparent;
+}
+.agent-thinking > summary {
+  cursor: pointer;
+  user-select: none;
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--agent-faint);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.agent-thinking > summary::-webkit-details-marker { display: none; }
+.agent-thinking > summary::before {
+  content: '›';
+  color: var(--agent-ghost);
+  transition: transform 0.12s;
+  display: inline-block;
+}
+.agent-thinking[open] > summary::before { transform: rotate(90deg); }
+.agent-thinking-body {
+  padding: var(--space-xs) var(--space-sm) var(--space-sm);
+  border-top: 1px solid var(--agent-border-soft);
+  margin-top: var(--space-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 18rem;
+  overflow: auto;
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  color: var(--agent-muted);
+}
+
+/* ── Tool calls: default collapsed into "one-line capsule" ── */
+.agent-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  width: 100%;
+}
+/* Collapse capsule: ✓ applied · 6 tools ▾ —— click to see details */
+.agent-tool-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  padding: 2px var(--space-xs);
+  border: 1px solid var(--agent-border-soft);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.agent-tool-summary:hover {
+  color: var(--agent-muted);
+  border-color: var(--agent-border);
+}
+.agent-tool-status {
+  font-weight: 600;
+  width: 1em;
+  text-align: center;
+}
+.agent-tool-status--ok { color: var(--agent-text); }
+.agent-tool-status--err { color: var(--agent-accent); }
+.agent-tool-status--run { color: var(--agent-faint); }
+.agent-tool-count { color: var(--agent-muted); }
+
+/* Expanded single tool call row */
+.agent-tool {
+  font-size: var(--fs-input);
+  border: 1px solid var(--agent-border-soft);
+  border-left: 2px solid var(--agent-border);
+  border-radius: 0;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--agent-card);
+}
+.agent-tool.is-error { border-left-color: var(--agent-accent); }
+.agent-tool.is-ok { border-left-color: var(--agent-text); }
+.agent-tool-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+.agent-tool-name {
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  color: var(--agent-text);
+  flex-shrink: 0;
+}
+.agent-tool-args {
+  color: var(--agent-faint);
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-tool-result {
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  color: var(--agent-muted);
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 10rem;
+  overflow: auto;
+}
+.agent-tool-result.is-single {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: none;
+}
+
+/* Tool rows inside thinking body: lighter style (no card background, no full border) —
+   avoids nested-card look when tool calls are displayed inside the collapsible block. */
+.agent-thinking-body .agent-tool {
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--agent-border-soft);
+  padding: 2px 0 2px var(--space-xs);
+}
+.agent-thinking-body .agent-tool.is-ok { border-left-color: var(--agent-text); }
+.agent-thinking-body .agent-tool.is-error { border-left-color: var(--agent-accent); }
+
+/* ── Attachment chip ── */
+.agent-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px var(--space-xs);
+  font-size: var(--fs-input);
+  border: 1px solid var(--agent-border-soft);
+  border-radius: 0;
+  background: var(--agent-card-strong);
+  color: var(--agent-muted);
+  max-width: 100%;
+}
+.agent-attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-attach-x {
+  line-height: 1;
+  color: var(--agent-ghost);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.agent-attach-x:hover { color: var(--agent-text); }
+
+/* ── Input area ── */
+.agent-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--agent-border-soft);
+  background: var(--agent-surface);
+}
+.agent-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-xs);
+}
+.agent-textarea {
+  flex: 1;
+  resize: none;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--agent-text);
+  font-size: var(--fs-label);
+  font-family: inherit;
+  line-height: 1.4;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 0;
+  outline: none;
+  min-height: 32px;  /* matches Textbox / sounds search height */
+  max-height: 60px;  /* limit height, show scrollbar when exceeded */
+  overflow-y: hidden;  /* hide scrollbar by default */
+  transition: border-color 0.12s, overflow-y 0s;
+}
+.agent-textarea.has-scroll {
+  overflow-y: auto;  /* show scrollbar only when content exceeds max-height */
+}
+.agent-textarea::placeholder { color: var(--agent-ghost); }
+.agent-textarea:focus { border-color: var(--agent-accent); }
+.agent-textarea:disabled { opacity: 0.5; }
+
+/* Main button (send / stop / compress) — text-only, no border or background */
+.agent-btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: var(--fs-label);
+  font-family: inherit;
+  color: var(--agent-text);
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 0.12s, opacity 0.12s;
+}
+.agent-btn:hover:not(:disabled) {
+  color: var(--agent-accent);
+}
+.agent-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* stop uses accent color to emphasize "this is the current action" */
+.agent-btn--stop {
+  color: var(--agent-accent);
+}
+
+/* Tool row icon button group (attach / web) */
+.agent-toolrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.agent-toolrow .agent-icon-btn[aria-pressed='true'] {
+  color: var(--agent-accent);
+  border-color: var(--agent-accent-soft);
+  background: var(--agent-accent-soft);
+}
+
+/* Footer status bar: left actions / right single metric */
+.agent-footer-stat {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  user-select: none;
+}
+.agent-footer-stat .is-warn { color: var(--agent-accent); }
+
+/* ── p2/p6 human-in-the-loop approval card ──
+ * Before tool call (write_code full replace / analyze_pattern_audio interrupt playback),
+ * show preview to user + approve/reject.
+ * Use accent border + card background to make it visible in conversation flow, but not modal.
+ */
+.agent-approval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--agent-accent-soft);
+  background: var(--agent-card);
+  flex-shrink: 0;
+}
+.agent-approval-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.agent-approval-tool {
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  font-size: var(--fs-input);
+  color: var(--agent-accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.agent-approval-summary {
+  font-size: var(--fs-input);
+  color: var(--agent-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-approval-meta {
+  font-size: var(--fs-input);
+  color: var(--agent-faint);
+  user-select: none;
+}
+.agent-approval-diff {
+  margin: 0;
+  padding: var(--space-xs) 0;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--agent-card-strong);
+  border-radius: 0;
+  font-family: var(--font-family, 'SF Mono', 'Menlo', monospace);
+  font-size: var(--fs-input);
+  line-height: 1.4;
+}
+.agent-diff-line {
+  display: flex;
+  align-items: baseline;
+  padding: 0 var(--space-sm);
+  white-space: pre;
+  overflow: hidden;
+}
+.agent-diff-marker {
+  flex-shrink: 0;
+  width: 1.2em;
+  user-select: none;
+  text-align: center;
+}
+.agent-diff-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-diff-line--ctx { color: var(--agent-faint); }
+.agent-diff-line--del { color: var(--agent-muted); background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.agent-diff-line--del .agent-diff-marker { color: var(--agent-faint); }
+.agent-diff-line--add { color: var(--agent-text); background: var(--agent-accent-soft); }
+.agent-diff-line--add .agent-diff-marker { color: var(--agent-accent); font-weight: 700; }
+.agent-approval-actions {
+  display: flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+.agent-approval-reject {
+  color: var(--agent-muted);
+}
+.agent-approval-approve {
+  color: var(--agent-accent);
+  border-color: var(--agent-accent-soft);
+  background: var(--agent-accent-soft);
+}
+.agent-approval-approve:hover:not(:disabled) {
+  border-color: var(--agent-accent);
+}

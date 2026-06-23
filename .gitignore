@@ -45,6 +45,9 @@ tidal-drum-machines
 webaudiofontdata
 src-tauri/target
 
+# Generated parser files
+packages/mini/krill-parser.js
+
 # BEGIN JetBrains -> END JetBrains
 
 # for JetBrains IDE users, e.g. WebStorm. Source: https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

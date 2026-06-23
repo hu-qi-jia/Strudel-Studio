@@ -1,5 +1,5 @@
 {
-  "_base": "https://raw.githubusercontent.com/felixroos/dough-samples/main/piano/",
+  "_base": "/samples/piano/",
   "piano": {
     "A0": "A0v8.mp3",
     "C1": "C1v8.mp3",

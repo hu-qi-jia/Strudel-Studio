@@ -63,6 +63,25 @@ export function getProviderOptions(config) {
   return options;
 }
 
+// ─── 按 provider 的上下文预算（token）──────────────────────────────────
+// 不同模型上下文窗口差异巨大：Gemini 2.5 有 1M，Claude 200k，GPT-4o 128k。
+// 原先 DEFAULT_CONTEXT_BUDGET=30000 硬编码对待所有模型——Gemini 用户白白浪费 970k，
+// 长会话被无谓压缩。这里按 provider 给出推荐预算，ContextManager / useAgent 据此动态覆盖。
+//
+// 取值保守：留 20% 余量给 system prompt + 工具定义，避免触顶。
+// 用户仍可在 config.mjs 的 DEFAULT_CONTEXT_BUDGET 调整未知 provider 的回退值。
+export const CONTEXT_BUDGETS = {
+  gemini: 800000, // Gemini 2.5: 1M 窗口，留 20% 余量
+  anthropic: 160000, // Claude: 200k 窗口，留 20% 余量
+  openai: 100000, // GPT-4o: 128k 窗口，留 ~20% 余量
+};
+
+// 按 config.provider 返回上下文预算。未知 provider 回退到 DEFAULT_CONTEXT_BUDGET。
+export function getContextBudget(config, fallback) {
+  const budget = CONTEXT_BUDGETS[config?.provider];
+  return budget || fallback;
+}
+
 // ─── Message Conversion ──────────────────────────────────────────────
 
 export function toCoreMessages(uiMessages) {

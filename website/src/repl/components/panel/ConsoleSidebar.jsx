@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import cx from '@src/cx.mjs';
 import { useSettings, setIsConsoleOpen } from '../../../settings.mjs';
 import { useStore } from '@nanostores/react';
@@ -15,6 +15,15 @@ export function ConsoleSidebar({ position }) {
 
   const [width, setWidth] = useState(300);
   const [height, setHeight] = useState(220);
+  // maxSize tracks 70% of window height; updates on resize so drag limit stays accurate.
+  const [maxHeight, setMaxHeight] = useState(() =>
+    typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.7) : 700,
+  );
+  useEffect(() => {
+    const update = () => setMaxHeight(Math.floor(window.innerHeight * 0.7));
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   const handleWidthResize = useCallback((newWidth) => {
     setWidth(newWidth);
@@ -40,7 +49,14 @@ export function ConsoleSidebar({ position }) {
     >
       {/* 拖拽手柄 */}
       {isRight && <ResizeHandle side="left" onResize={handleWidthResize} minSize={200} maxSize={800} />}
-      {isBottom && <ResizeHandle side="top" onResize={handleHeightResize} minSize={100} maxSize={600} />}
+      {isBottom && (
+        <ResizeHandle
+          side="top"
+          onResize={handleHeightResize}
+          minSize={100}
+          maxSize={maxHeight}
+        />
+      )}
 
       {/* 内容区 */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
@@ -59,7 +75,7 @@ export function ConsoleSidebar({ position }) {
         </div>
 
         {/* 日志内容 */}
-        <div className="flex-1 overflow-auto p-2 text-[var(--fs-input)]">
+        <div className="flex-1 overflow-auto p-2 text-[var(--fs-hint)]">
           <div className="space-y-1">
             {log.map((l) => {
               const message = linkify(l.message);

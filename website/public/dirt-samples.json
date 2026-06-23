@@ -1,0 +1,303 @@
+{
+  "_base": "/samples/dirt-samples/",
+  "bd": [
+    "bd/BT0A0A7.wav",
+    "bd/BT0A0D0.wav",
+    "bd/BT0A0D3.wav",
+    "bd/BT0A0DA.wav",
+    "bd/BT0AAD0.wav",
+    "bd/BT0AADA.wav"
+  ],
+  "sd": [
+    "sd/rytm-00-hard.wav",
+    "sd/rytm-01-classic.wav"
+  ],
+  "hh": [
+    "hh/000_hh3closedhh.wav",
+    "hh/001_hh3crash.wav",
+    "hh/002_hh3hit1.wav",
+    "hh/003_hh3hit2.wav",
+    "hh/004_hh3hit3.wav",
+    "hh/005_hh3kick1.wav"
+  ],
+  "cp": [
+    "cp/HANDCLP0.wav",
+    "cp/HANDCLPA.wav"
+  ],
+  "rs": [
+    "rs/rytm-rs.wav"
+  ],
+  "lt": [
+    "lt/LT0D0.wav",
+    "lt/LT0D3.wav",
+    "lt/LT0D7.wav",
+    "lt/LT0DA.wav",
+    "lt/LT3D0.wav",
+    "lt/LT3D3.wav"
+  ],
+  "mt": [
+    "mt/MT0D0.wav",
+    "mt/MT0D3.wav",
+    "mt/MT0D7.wav",
+    "mt/MT0DA.wav",
+    "mt/MT3D0.wav",
+    "mt/MT3D3.wav"
+  ],
+  "ht": [
+    "ht/HT0D0.wav",
+    "ht/HT0D3.wav",
+    "ht/HT0D7.wav",
+    "ht/HT0DA.wav",
+    "ht/HT3D0.wav",
+    "ht/HT3D3.wav"
+  ],
+  "cr": [
+    "cr/RIDED0.wav",
+    "cr/RIDED2.wav",
+    "cr/RIDED4.wav",
+    "cr/RIDED6.wav",
+    "cr/RIDED8.wav",
+    "cr/RIDEDA.wav"
+  ],
+  "cb": [
+    "cb/rytm-cb.wav"
+  ],
+  "perc": [
+    "perc/000_perc0.wav",
+    "perc/001_perc1.wav",
+    "perc/002_perc2.wav",
+    "perc/003_perc3.wav",
+    "perc/004_perc4.wav",
+    "perc/005_perc5.wav"
+  ],
+  "sn": [
+    "sn/ST0T0S0.wav",
+    "sn/ST0T0S3.wav",
+    "sn/ST0T0S7.wav",
+    "sn/ST0T0SA.wav",
+    "sn/ST0T3S3.wav",
+    "sn/ST0T3S7.wav"
+  ],
+  "casio": [
+    "casio/high.wav",
+    "casio/low.wav",
+    "casio/noise.wav"
+  ],
+  "crow": [
+    "crow/000_crow.wav",
+    "crow/001_crow2.wav",
+    "crow/002_crow3.wav",
+    "crow/003_crow4.wav"
+  ],
+  "insect": [
+    "insect/000_everglades_conehead.wav",
+    "insect/001_robust_shieldback.wav",
+    "insect/002_seashore_meadow_katydid.wav"
+  ],
+  "wind": [
+    "wind/000_wind1.wav",
+    "wind/001_wind10.wav",
+    "wind/002_wind2.wav",
+    "wind/003_wind3.wav",
+    "wind/004_wind4.wav",
+    "wind/005_wind5.wav",
+    "wind/006_wind6.wav",
+    "wind/007_wind7.wav",
+    "wind/008_wind8.wav",
+    "wind/009_wind9.wav"
+  ],
+  "jazz": [
+    "jazz/000_BD.wav",
+    "jazz/001_CB.wav",
+    "jazz/002_FX.wav",
+    "jazz/003_HH.wav",
+    "jazz/004_OH.wav",
+    "jazz/005_P1.wav",
+    "jazz/006_P2.wav",
+    "jazz/007_SN.wav"
+  ],
+  "metal": [
+    "metal/000_0.wav",
+    "metal/001_1.wav",
+    "metal/002_2.wav",
+    "metal/003_3.wav",
+    "metal/004_4.wav",
+    "metal/005_5.wav",
+    "metal/006_6.wav",
+    "metal/007_7.wav",
+    "metal/008_8.wav",
+    "metal/009_9.wav"
+  ],
+  "east": [
+    "east/000_nipon_wood_block.wav",
+    "east/001_ohkawa_mute.wav",
+    "east/002_ohkawa_open.wav",
+    "east/003_shime_hi.wav",
+    "east/004_shime_hi_2.wav",
+    "east/005_shime_mute.wav",
+    "east/006_taiko_1.wav",
+    "east/007_taiko_2.wav",
+    "east/008_taiko_3.wav"
+  ],
+  "space": [
+    "space/000_0.wav",
+    "space/001_1.wav",
+    "space/002_11.wav",
+    "space/003_12.wav",
+    "space/004_13.wav",
+    "space/005_14.wav",
+    "space/006_15.wav",
+    "space/007_16.wav",
+    "space/008_17.wav",
+    "space/009_18.wav",
+    "space/010_2.wav",
+    "space/011_3.wav",
+    "space/012_4.wav",
+    "space/013_5.wav",
+    "space/014_6.wav",
+    "space/015_7.wav",
+    "space/016_8.wav",
+    "space/017_9.wav"
+  ],
+  "numbers": [
+    "numbers/0.wav",
+    "numbers/1.wav",
+    "numbers/2.wav",
+    "numbers/3.wav",
+    "numbers/4.wav",
+    "numbers/5.wav",
+    "numbers/6.wav",
+    "numbers/7.wav",
+    "numbers/8.wav"
+  ],
+  "num": [
+    "num/00.wav",
+    "num/01.wav",
+    "num/02.wav",
+    "num/03.wav",
+    "num/04.wav",
+    "num/05.wav",
+    "num/06.wav",
+    "num/07.wav",
+    "num/08.wav",
+    "num/09.wav",
+    "num/10.wav",
+    "num/11.wav",
+    "num/12.wav",
+    "num/13.wav",
+    "num/14.wav",
+    "num/15.wav",
+    "num/16.wav",
+    "num/17.wav",
+    "num/18.wav",
+    "num/19.wav",
+    "num/20.wav"
+  ],
+  "birds": [
+    "birds/000_1.wav",
+    "birds/001_10.wav",
+    "birds/002_2.wav",
+    "birds/003_3.wav",
+    "birds/004_4.wav",
+    "birds/005_5.wav",
+    "birds/006_6.wav",
+    "birds/007_7.wav",
+    "birds/008_8.wav",
+    "birds/009_9.wav"
+  ],
+  "bleep": [
+    "bleep/boip.wav",
+    "bleep/checkpoint-hit.wav",
+    "bleep/echo-blip-thing.wav",
+    "bleep/harsh-whippleszoot.wav",
+    "bleep/pc_beep.wav",
+    "bleep/shortsaxish.wav",
+    "bleep/simpletone.wav",
+    "bleep/stereo-star-trek-pager.wav",
+    "bleep/tiniest.wav",
+    "bleep/tinynote.wav",
+    "bleep/vidgame-bleep1.wav",
+    "bleep/vidgame-bleep2.wav",
+    "bleep/watch_beep.wav"
+  ],
+  "blip": [
+    "blip/000_blipp01.wav",
+    "blip/001_blipp02.wav"
+  ],
+  "bottle": [
+    "bottle/000_1.wav",
+    "bottle/001_10.wav",
+    "bottle/002_11.wav",
+    "bottle/003_12.wav",
+    "bottle/004_13.wav",
+    "bottle/005_2.wav",
+    "bottle/006_3.wav",
+    "bottle/007_4.wav",
+    "bottle/008_5.wav",
+    "bottle/009_6.wav",
+    "bottle/010_7.wav",
+    "bottle/011_8.wav",
+    "bottle/012_9.wav"
+  ],
+  "can": [
+    "can/000_1.wav",
+    "can/001_10.wav",
+    "can/002_11.wav",
+    "can/003_12.wav",
+    "can/004_13.wav",
+    "can/005_14.wav",
+    "can/006_2.wav",
+    "can/007_3.wav",
+    "can/008_4.wav",
+    "can/009_5.wav",
+    "can/010_6.wav",
+    "can/011_7.wav",
+    "can/012_8.wav",
+    "can/013_9.wav"
+  ],
+  "coins": [
+    "coins/coins.wav"
+  ],
+  "click": [
+    "click/000_click0.wav",
+    "click/001_click1.wav",
+    "click/002_click2.wav",
+    "click/003_click3.wav"
+  ],
+  "clak": [
+    "clak/000_clak1.wav",
+    "clak/001_clak2.wav"
+  ],
+  "breath": [
+    "breath/000_breath.wav"
+  ],
+  "bubble": [
+    "bubble/000_bub0.wav",
+    "bubble/001_bub1.wav",
+    "bubble/002_bub2.wav",
+    "bubble/003_bub3.wav",
+    "bubble/004_bub4.wav",
+    "bubble/005_bub5.wav",
+    "bubble/006_bub6.wav",
+    "bubble/007_bub7.wav"
+  ],
+  "circus": [
+    "circus/000_bounce.wav",
+    "circus/001_miss.wav",
+    "circus/002_pop.wav"
+  ],
+  "dork2": [
+    "dork2/0.wav",
+    "dork2/1.wav",
+    "dork2/2.wav",
+    "dork2/4.wav"
+  ],
+  "drum": [
+    "drum/000_drum1.wav",
+    "drum/001_drum2.wav",
+    "drum/002_drum3.wav",
+    "drum/003_drum4.wav",
+    "drum/004_drum5.wav",
+    "drum/005_drum6.wav"
+  ]
+}

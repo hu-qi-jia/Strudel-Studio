@@ -1,6 +1,6 @@
 import cx from '@src/cx.mjs';
 
-export function ButtonGroup({ value, onChange, items }) {
+export function ButtonGroup({ value, onChange, items, buttonStyle }) {
   return (
     <div className="flex max-w-lg">
       {Object.entries(items).map(([key, label]) => (
@@ -12,7 +12,7 @@ export function ButtonGroup({ value, onChange, items }) {
             'px-2 py-0.5 border-b whitespace-nowrap transition-colors',
             value === key ? 'border-foreground' : 'border-transparent text-foreground/50 hover:text-foreground/70',
           )}
-          style={{ height: '28px', fontSize: 'var(--fs-input)' }}
+          style={{ height: '28px', fontSize: 'var(--fs-input)', ...buttonStyle }}
         >
           {label.toLowerCase()}
         </button>

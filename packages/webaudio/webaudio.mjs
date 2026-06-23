@@ -31,6 +31,63 @@ export const webaudioOutput = (hap, _deadline, hapDuration, cps, t) => {
   return superdough(hap2value(hap), t, hapDuration, cps, hap.whole?.begin.valueOf());
 };
 
+export async function renderPatternToBuffer(
+  pattern,
+  cps,
+  begin,
+  end,
+  sampleRate,
+  maxPolyphony,
+  multiChannelOrbits,
+) {
+  // 关键：绝不能 close 实时 AudioContext。close 是不可逆的——旧实现把实时 context
+  // 关掉后，导出结束即便重新 initAudio 也常处于 suspended / worklet 未就绪状态，
+  // 表现为「点 play 完全无响应」。这里只是把全局 context 临时换成离线 context，
+  // 渲染完再换回原来的实时 context（它一直没被关，currentTime 连续，可直接播放）。
+  const liveCtx = getAudioContext();
+  resetGlobalEffects();
+  resetSampleCache();
+  const offlineCtx = new OfflineAudioContext(2, Math.max(1, ((end - begin) / cps) * sampleRate), sampleRate);
+  setAudioContext(offlineCtx);
+  try {
+    await initAudio({
+      maxPolyphony,
+      multiChannelOrbits,
+    });
+    logger('[webaudio] preloading');
+
+    let haps = pattern
+      .queryArc(begin, end, { _cps: cps })
+      .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
+    for (const hap of haps) {
+      if (hap.hasOnset()) {
+        try {
+          await superdough(
+            hap2value(hap),
+            (hap.whole.begin.valueOf() - begin) / cps,
+            hap.duration / cps,
+            cps,
+            (hap.whole?.begin.valueOf() - begin) / cps,
+          );
+        } catch (err) {
+          errorLogger(err, 'webaudio');
+        }
+      }
+    }
+    logger('[webaudio] start rendering');
+
+    // 返回渲染好的 AudioBuffer 给调用方（导出下载 / agent 音频分析共用此核心）。
+    // context 的恢复（换回 liveCtx）在下方 finally 完成；worklet 缓存与 polyphony 的
+    // 重武装交给调用方（handleExport 的 finally / analyze_audio 的恢复步骤）。
+    return await offlineCtx.startRendering();
+  } finally {
+    // 无论渲染成功还是中途抛错，都必须把全局 context 换回原来的实时 context。
+    setAudioContext(liveCtx);
+    resetGlobalEffects();
+    resetSampleCache();
+  }
+}
+
 export async function renderPatternAudio(
   pattern,
   cps,
@@ -41,69 +98,34 @@ export async function renderPatternAudio(
   multiChannelOrbits,
   downloadName = undefined,
 ) {
-  let audioContext = getAudioContext();
-  // 关闭当前 AudioContext（OfflineAudioContext 没有 close 方法）
-  if (audioContext && typeof audioContext.close === 'function') {
-    await audioContext.close();
-  }
-  // 重置全局效果和音频路由节点，确保新的 OfflineAudioContext 会重新初始化
-  resetGlobalEffects();
-  resetSampleCache();
-  audioContext = new OfflineAudioContext(2, ((end - begin) / cps) * sampleRate, sampleRate);
-  setAudioContext(audioContext);
-  await initAudio({
+  // 下载导出 = 渲染到 buffer + 转 WAV + 触发下载。渲染核心（含 context 安全 swap）
+  // 抽到 renderPatternToBuffer，供 agent 的 analyze_audio 复用而无需下载副作用。
+  const renderedBuffer = await renderPatternToBuffer(
+    pattern,
+    cps,
+    begin,
+    end,
+    sampleRate,
     maxPolyphony,
     multiChannelOrbits,
-  });
-  logger('[webaudio] preloading');
-
-  let haps = pattern
-    .queryArc(begin, end, { _cps: cps })
-    .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
-  for (const hap of haps) {
-    if (hap.hasOnset()) {
-      try {
-        await superdough(
-          hap2value(hap),
-          (hap.whole.begin.valueOf() - begin) / cps,
-          hap.duration / cps,
-          cps,
-          (hap.whole?.begin.valueOf() - begin) / cps,
-        );
-      } catch (err) {
-        errorLogger(err, 'webaudio');
-      }
-    }
-  }
-  logger('[webaudio] start rendering');
-
-  return audioContext
-    .startRendering()
-    .then((renderedBuffer) => {
-      const wavBuffer = audioBufferToWav(renderedBuffer);
-      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      downloadName = downloadName ? `${downloadName}.wav` : `${new Date().toISOString()}.wav`;
-      // 使用 window.open 触发下载，避免 a.click() 在异步上下文中被浏览器阻止
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = downloadName;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      // 延迟点击确保 DOM 已插入
-      setTimeout(() => {
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-      }, 0);
-    })
-    .finally(async () => {
-      setAudioContext(null);
-      resetGlobalEffects();
-      resetSampleCache();
-    });
+  );
+  const wavBuffer = audioBufferToWav(renderedBuffer);
+  const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  downloadName = downloadName ? `${downloadName}.wav` : `${new Date().toISOString()}.wav`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = downloadName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  // 导出由用户点击触发，sticky activation 在 await 链中仍然有效，a.click() 可正常下载
+  setTimeout(() => {
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }, 0);
 }
 
 export function webaudioRepl(options = {}) {
